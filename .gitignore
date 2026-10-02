@@ -1,0 +1,4 @@
+firmware/
+.venv/
+__pycache__/
+out/

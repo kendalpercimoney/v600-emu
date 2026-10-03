@@ -15,9 +15,42 @@ Byte order: **big-endian** (BE-32) ARM7TDMI code, mostly Thumb.
 | `0x11380000-0x11FDFFFF` | Flash filesystem (128 KB log-structured blocks) | Decoded earlier |
 | `0x11FE0000-0x11FE07FF` | Certificates / security data | Strings |
 | `0x12000000-0x123FFFFF` | External RAM (4 MB). Data/BSS up to `~0x12400000` | Scatter table, `0x12000000` probed 3x at boot |
-| `0x2484xxxx-0x2485xxxx` | Peripheral block (several units) | Literals |
 | `0x28880020` | External memory/chip-select controller (written at entry: `0x2201`, `0x3011`, `0x60000`, `0`) | `0x106289C0` |
-| `0x29890000` | Interrupt controller? `+0x44` = pending source (-1 = none); handler table in RAM at `0x120BEBF8` | IRQ dispatcher `0x10D16A7C` |
+| `0x0000-0x1FFFF` | Boot ROM (not in superfile): MCU-DSP messaging (`0xFFF4` receive, `0x101CC` send) and a few other services; stubbed in `bootrom.py` | Veneers in the firmware |
+
+## Peripherals (modelled)
+
+| Address | Unit | What we know |
+|---|---|---|
+| `0x24841000` | GPIO / pin mux | Bulk setup at `0x108715F4`; pin reads |
+| `0x24845000` | Clock / power management | `+0x2C` low bits = CPU low-power mode (idle loop); `+0x10` bit 8 start/busy |
+| `0x24848000` | OS timer | `+0x20/+0x22` = 32-bit countdown in time() units, latched on low write; `+0x06` bit 8 IE; `+0x04` bit 8 status (W1C); AITC source 14. `+0x12/+0x16/+0x18` = watchdog pre-warning channel (source 15 -> reset) |
+| `0x24849000` | Watchdog | `+0` control (bit 4 soft reset, bit 5 assert), `+2` service `0x5555/0xAAAA` |
+| `0x2484A000` | 64-bit free-running counter | `+0` high, `+4` low; time() = counter >> 19 (`0x1089B6A4`) |
+| `0x2484B000` | RTC-like timer (source 48) | `+0x20` enable, `+0x38` IE mask, `+0x34` status |
+| `0x2484F000` | SIM card interface (SCIM) | Driver strings `p/SCIM_EXT_PORT`; no card fitted (overrides) |
+| `0x24851000` | QSPI | `+0x006` start (`0x20|ch`, bit 5 self-clears), `+0x010` bits 0/8 queue active, `+0x012/14` per-channel done (1 = idle, W1C), `+0x400` command RAM, `+0x480..` data RAM. Driver queue table at `[[0x1232E5F8]]` |
+| `0x24854000` | DMA to the ATI host port | `+0/+2` source, `+4/+6` count, `+0x18` control (1 start, bit 6 done W1C, source 26), `+0x1C` bit 8 = address phase (first word = ATI address) |
+| `0x2485BFF2` | DSP host port | `+2` control (bit 7 reset), `+4` status (bit 7 busy, 14 running, 15 buffer taken), `+0xC` reply `0x8001` |
+| `0x2485C800` | DSP shared RAM | Download buffers |
+| `0x29890000` | AITC interrupt controller | Freescale AITC layout (see `irq.py`); handler table `0x120BEBF8` |
+
+## External chips
+
+| Chip | Interface | Notes |
+|---|---|---|
+| Power IC (PCAP2-style) | QSPI chip select 3 (queue 0, hw channel 5) | 32 x 25-bit regs; word = W bit31, reg bits 30:26, data 24:0. Reg 0 = ISR (W1C; bit 8 power key, 7, 5 = power-on causes); reg 23 = board straps (signal 0xE7) |
+| **ATI Imageon (CHIP_ID 0x5745 / 0x1002)** | Serial host interface on QSPI chip select 6 (queues 12/14, hw channels 3/16) + DMA write port | Driver: ATI Handheld Interface 1.27. Serial frame: byte0 = flags (0x20 write) / len-1, bytes1-3 address; read data from byte 12, write data from byte 8; 32-bit regs little-endian. Regs at 0x10000+. Memory little-endian. Command ring (PM4) 16 KB at 0x80000. Display: graphics base `0x418` (0x103D10), pitch `0x41C` (352), active 176x220 |
+| DSP (56600-family) | Host port + boot-ROM messaging | Firmware downloaded from code group 0x10040000; ROM version 0x62D5 (patch table 0x10040010) |
+| Intel flash 0x0089/0x880F | Memory bus | Intel command set; driver accepts IDs in table at IRAM `0x03FC4284` |
+
+## ATI PM4 commands seen
+
+- Type 0: `[31:30]=0`, count-1 in `[29:16]`, register dword index in `[15:0]`.
+- Type 1: two registers, indices in `[10:0]` and `[21:11]`, two data words.
+- Type 3 `0x19`: host-data blit, `[(y<<16)|x, (h<<16)|w, pixels...]` into DST_OFFSET (`0x1004`) / DST_PITCH (`0x1008`, pixels).
+- Type 3 `0x1A`: paint rectangle `[(x<<16)|y, (w<<16)|h]` with DP_BRUSH_FRGD_CLR (`0x107C`).
+- Type 3 `0x1B`: 3 words, not implemented yet.
 
 ## Boot path
 
@@ -32,6 +65,13 @@ Byte order: **big-endian** (BE-32) ARM7TDMI code, mostly Thumb.
 5. RTOS task table: 44 tasks, ROM copy at `0x10CFF650`, RAM at `0x1232E010`
    (record: stack size, priority, entry, stack top). Task entries are 10-byte stubs at
    `0x107FBB28+`: `checkpoint(N); bl body`.
+
+## Per-phone data we synthesise
+
+- **PDS** at `0x10010000` (2 x 32 KB): signature `PDS_2006` + barker `0xFFF8` at +8, otherwise empty.
+- Product type (PDS item `0x293`) = 3, from header byte `0x10080019` (override).
+- Bootloader clock code at IRAM `0x03FC3600` = 8 (52 MHz).
+- No SIM card (overrides on card reset/deactivate).
 
 ## Other landmarks
 

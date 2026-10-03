@@ -3,7 +3,8 @@ from . import bootrom, overrides
 from .dsp import DSPMessages
 from .flash import Flash
 from .irq import AITC, OSTimer
-from .periph import DSPHostPort, FreeRunCounter, PowerIC, QSPI, Regs
+from .periph import (ATIChip, ATISerialPort, DMA, DSPHostPort, FreeRunCounter, PowerIC,
+                     QSPI, Regs)
 
 # Power-IC register 23 holds the board strap bits read as signal 0xE7 by the board-variant
 # probe (0x10628B1C). Non-zero low bits select a real phone profile (IDs 1/2) instead of the
@@ -46,7 +47,11 @@ def build(m, pds_barker=PDS_BARKER):
     m.pmic = PowerIC(m.log)
     m.pmic.regs[23] = PMIC_BOARD_STRAPS
     m.pmic.regs[0] = PMIC_ISR_POWER_KEY
-    m.qspi = QSPI({0: m.pmic}, m.log)
+    # QSPI devices, keyed by the driver's device descriptor (see QSPI.queue_for)
+    # cs6: the ATI Imageon's serial host interface (CHIP_ID: device 0x5745, ATI vendor 0x1002;
+    # the driver accepts 0x5641-7 / 0x5741-7 but its frame-buffer setup needs 0x5645 / 0x5745).
+    m.ati = ATIChip(m.log)
+    m.qspi = QSPI(m, {0x10800562: m.pmic, 0x1080058C: ATISerialPort(m.ati)}, m.log)
     m.attach(0x24851000, 0x1000, m.qspi)
     m.dsp = DSPHostPort(m.log)
     m.attach(0x2485BFF0, 0x10, m.dsp)
@@ -55,6 +60,8 @@ def build(m, pds_barker=PDS_BARKER):
     m.attach(0x2484A000, 0x8, m.counter)
     m.aitc = AITC(m)
     m.attach(0x29890000, 0x100, m.aitc)
+    m.dma = DMA(m, m.aitc, m.ati, m.log)
+    m.attach(0x24854000, 0x40, m.dma)
     ostimer = OSTimer(m, m.aitc, m.counter)
     m.attach(0x24848000, 0x40, ostimer)
     m.timers.append(ostimer)

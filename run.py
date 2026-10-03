@@ -50,6 +50,12 @@ def main():
     pc = m.pc()
     print('\n-- code at pc')
     dis(max(pc - 16, 0), 16, m.thumb())
+    if getattr(m, 'ati', None) is not None and m.ati.blits:
+        from PIL import Image
+        img = m.ati.screen()
+        img.save('out/screen.png')
+        img.resize((img.width * 3, img.height * 3), Image.NEAREST).save('out/screen_3x.png')
+        print(f'\n-- display: {m.ati.blits} blits, {m.ati.fills} fills -> out/screen.png')
     print('\n-- last MMIO accesses')
     for pc_, kind, addr, size, val in list(m.mmio_trace)[-16:]:
         print(f'  pc={pc_:08x} {kind}{size * 8:<2} {addr:08x} = {val:08x}')

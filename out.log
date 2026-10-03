@@ -160,7 +160,7 @@
   mmio R16 2485101a = 00000000   pc=03ff0b6a
   mmio W16 2485101a = 00000020   pc=03ff0b72
   mmio W16 24851012 = 00000020   pc=03ff0d3a
-  qspi channel 5 first start (TX 5c00000000000000)
+  qspi channel 5 -> device 10800562 (model), 4 bytes TX 5c000000
   pmic R reg23 -> 0x1ffffff
   mmio W16 24851006 = 00000025   pc=03ff0d42
   mmio R16 24851012 = 0000ffff   pc=03ff08dc
@@ -227,7 +227,7 @@
   mmio R16 24851010 = 00008888   pc=03ff0c6a
   mmio R16 2485100c = 00000000   pc=03ff0c7e
   mmio W16 2485100c = 00000001   pc=03ff0c88
-  qspi channel 4 first start (TX 0000000000000100)
+  qspi channel 4 -> device 1080059a (none), 8 bytes TX 01c0000000000000
   mmio R16 24851006 = 00000004   pc=03ff0c96
   mmio R16 24851052 = 00000000   pc=03ff0c9e
   mmio R16 2485100c = 00000001   pc=03ff0cc0
@@ -11796,7 +11796,7 @@
   mmio W16 24851566 = 0000ffff   pc=03ff0b02
   mmio R16 2485142e = 00000094   pc=03ff0b2e
   mmio W16 2485142e = 00000094   pc=03ff0b36
-  qspi channel 11 first start (TX d407801100000000)
+  qspi channel 11 -> device 1080057e (none), 10 bytes TX ffffffffffffffffffff
   mmio W16 2485155e = 0000ffff   pc=03ff0b02
   mmio W16 24851560 = 0000ffff   pc=03ff0b02
   mmio W16 24851562 = 0000ffff   pc=03ff0b02
@@ -11810,7 +11810,7 @@
   mmio W16 248514e6 = 0000ffff   pc=03ff0b02
   mmio R16 24851426 = 00000075   pc=03ff0b2e
   mmio W16 24851426 = 00000075   pc=03ff0b36
-  qspi channel 9 first start (TX d407801100000000)
+  qspi channel 9 -> device 10800570 (none), 8 bytes TX ffffffffffffffff
   mmio W16 248514e0 = 0000ffff   pc=03ff0b02
   mmio W16 248514e2 = 0000ffff   pc=03ff0b02
   mmio W16 248514e4 = 0000ffff   pc=03ff0b02
@@ -11890,7 +11890,7 @@
   mmio W16 248515f8 = 0000ab00   pc=03ff0b02
   mmio R16 2485140e = 000000f6   pc=03ff0b2e
   mmio W16 2485140e = 000000f6   pc=03ff0b36
-  qspi channel 3 first start (TX d407801100000000)
+  qspi channel 3 -> device 1080058c (model), 32 bytes TX 0f000030107591400000004210c3ab0000000000000000000000000000000000
   mmio R16 2485160a = 00000000   pc=03ff0d64
   mmio R16 2485160c = 00000000   pc=03ff0d64
   mmio R16 2485160e = 00000000   pc=03ff0d64
@@ -11921,662 +11921,53 @@
   mmio R16 24851612 = 00000000   pc=03ff0d64
   mmio R16 24851614 = 00000000   pc=03ff0d64
   mmio R16 24851616 = 00000000   pc=03ff0d64
+  mmio W16 248515f8 = 00000004   pc=03ff0b02
+  mmio R16 24851618 = 00004557   pc=03ff0d64
+  ati cp: type-3 opcode 0x1b (3 words) not implemented
   [boot] checkpoint 0x32  from 10870fde
-  [boot] checkpoint 0x2d  from 10871474
-  [boot] checkpoint 0x64  from 107fbb2a
-  [boot] checkpoint 0x65  from 107fbb34
-  mmio R32 29890000 = 01000000   pc=10ab87fa
-  mmio W32 29890000 = 01100000   pc=10ab8804
-  [boot] checkpoint 0x66  from 107fbb3e
-  mmio R16 2484e000 = 00000000   pc=1088e610
-  mmio W16 2484e000 = 000000ff   pc=1088e618
-  mmio R16 2484e002 = 00000000   pc=1088e61c
-  mmio W16 2484e002 = 00000001   pc=1088e624
-  mmio R16 2484e004 = 00000000   pc=1088e628
-  mmio W16 2484e004 = 00000000   pc=1088e632
-  mmio R16 2484c004 = 00000000   pc=1062939e
-  mmio R32 24841020 = 0000fea4   pc=10631ba2
-  mmio W32 24841020 = 0000fea4   pc=10631bba
-  mmio R32 2484102c = 00000000   pc=10631bce
-  mmio W32 2484102c = 00000000   pc=10631bfe
-  mmio R32 24841084 = 00000000   pc=10631a96
-  mmio R32 24841014 = 04000020   pc=10631b20
-  mmio R16 2484c006 = 00000000   pc=106293d0
-  mmio W16 2484c006 = 00000000   pc=106293e2
-  mmio R16 2484c006 = 00000000   pc=106293d0
-  mmio W16 2484c006 = 00000000   pc=106293e2
-  mmio R32 24841050 = 0000c66f   pc=10631cfe
-  mmio R32 2484105c = 00000000   pc=10631d2a
-  mmio R32 2484108c = 00000000   pc=10631a96
-  mmio R32 24841020 = 0000fea4   pc=10631ba2
-  mmio R32 24841018 = 10410080   pc=10631c12
-  mmio W32 24841018 = 10410080   pc=10631c46
-  mmio R32 2484102c = 00000000   pc=10631bce
-  mmio R32 24841064 = 00000400   pc=10631e1c
-  mmio W32 24841064 = 00000400   pc=10631e50
-  mmio R32 24841018 = 10410080   pc=10631c12
-  mmio W16 24848020 = 00000000   pc=1089b766
-  mmio W16 24848022 = 00000009   pc=1089b772
-  [boot] checkpoint 0x67  from 107fbb48
-  [boot] checkpoint 0x68  from 107fbb52
-  [boot] checkpoint 0x69  from 107fbb5c
-  [boot] checkpoint 0x6a  from 107fbb66
-  [boot] checkpoint 0x6b  from 107fbb70
-  mmio R32 24859000 = 00000000   pc=106542a8
-  mmio W32 24859000 = 00000010   pc=106542b0
-  mmio R32 24859000 = 00000010   pc=106542b4
-  mmio W32 24859000 = 00000010   pc=106542be
-  mmio W32 24859004 = 00000001   pc=106542dc
-  [boot] checkpoint 0x6c  from 107fbb7a
-  [boot] checkpoint 0x6d  from 107fbb84
-  [boot] checkpoint 0x6f  from 107fbb98
-  mmio R32 24845000 = 00000000   pc=03ff0686
-  mmio W32 24845000 = 00000000   pc=03ff068e
-  mmio W32 2989000c = 0000001c   pc=03fc3750
-  mmio W32 2989000c = 00000039   pc=03fc3750
-  [boot] checkpoint 0x86  from 107fbc7e
-  [boot] checkpoint 0x6e  from 107fbb8e
-  [boot] checkpoint 0x71  from 107fbbac
-  mmio R32 29890004 = 0000001f   pc=03ff0768
-  mmio R32 29890040 = 000e0001   pc=03ff077a
-  mmio R32 29890040 = 000e0001   pc=03ff0786
-  mmio W32 29890004 = 00000001   pc=03ff078e
-  mmio W16 24848004 = 00000100   pc=10b3deae
-  mmio W32 29890004 = 0000001f   pc=03ff07aa
-  mmio R32 29890000 = 01100000   pc=03ff07d0
-  mmio W16 24848020 = 00000000   pc=1089b766
-  mmio W16 24848022 = 00008ffa   pc=1089b772
-  mmio R32 2484108c = 00000000   pc=10631a96
-  [boot] checkpoint 0x73  from 107fbbc0
-  mmio R32 2484101c = 00012492   pc=10631c12
-  mmio W32 2484101c = 00012492   pc=10631c46
-  mmio R32 2484101c = 00012492   pc=10631c12
-  [boot] checkpoint 0x72  from 107fbbb6
-  mmio R16 2484f022 = 00000000   pc=10082ff2
-  mmio W16 2484f022 = 00000000   pc=10082ffc
-  mmio R16 2484f022 = 00000000   pc=10082e82
-  mmio W16 2484f022 = 00000008   pc=10082e8c
-  mmio R16 2484f002 = 00000000   pc=100a4510
-  mmio W16 2484f002 = 00000000   pc=100a451a
-  mmio R16 2484f002 = 00000000   pc=100a4520
-  mmio W16 2484f002 = 00000000   pc=100a452a
-  mmio R16 2484f02a = 00000000   pc=100a4530
-  mmio W16 2484f02a = 00000001   pc=100a453a
-  mmio R16 2484f012 = 00000000   pc=100a4540
-  mmio W16 2484f012 = 00000000   pc=100a454a
-  mmio R16 2484f01c = 00000000   pc=100a4550
-  mmio W16 2484f01c = 00000004   pc=100a455a
-  mmio R16 2484f028 = 00000000   pc=100a4560
-  mmio W16 2484f028 = 00000001   pc=100a456c
-  mmio R16 2484f01c = 00000004   pc=100a4572
-  mmio W16 2484f01c = 00000004   pc=100a457c
-  mmio R16 2484f012 = 00000000   pc=100a4592
-  mmio W16 2484f012 = 00000002   pc=100a459c
-  mmio R16 2484f010 = 00000000   pc=100a45b4
-  mmio W16 2484f010 = 00000000   pc=100a45be
-  mmio W16 2484f018 = 00000010   pc=100a45c6
-  mmio W16 2484f018 = 00000008   pc=100a45ce
-  [boot] checkpoint 0x74  from 107fbbca
-  [boot] checkpoint 0x75  from 107fbbd4
-  [boot] checkpoint 0x76  from 107fbbde
-  [boot] checkpoint 0x77  from 107fbbe8
-  mmio R32 24841004 = 00002000   pc=10631b64
-  mmio W32 24841004 = 00002000   pc=10631b98
-  mmio R32 24841004 = 00002000   pc=10631b64
-  mmio W32 24841080 = 00000000   pc=10631ac6
-  [boot] checkpoint 0x79  from 107fbbfc
-  [boot] checkpoint 0x78  from 107fbbf2
-  [boot] checkpoint 0x7a  from 107fbc06
-  [boot] checkpoint 0x8d  from 107fbcc4
-  [boot] checkpoint 0x7e  from 107fbc2e
-  [boot] checkpoint 0x7d  from 107fbc24
-  [boot] checkpoint 0x7b  from 107fbc10
-  mmio W16 24853380 = 00000001   pc=10652d02
-  mmio W16 248533a2 = 0000000b   pc=10652d0a
-  mmio W16 248533a4 = 00000000   pc=10652d0e
-  mmio W16 248533a6 = 00001387   pc=10652d12
-  mmio W16 248533b2 = 00000029   pc=10652d16
-  mmio W16 248533b4 = 00006fff   pc=10652d1a
-  mmio W16 24853382 = 00000000   pc=10652d56
-  mmio W16 24853384 = 00000000   pc=10652d5c
-  mmio W16 2485338a = 00000010   pc=10652d66
-  mmio W16 24853390 = 00000000   pc=10652d6a
-  mmio W16 24853394 = 00000000   pc=10652d6c
-  mmio W16 24853398 = 00000000   pc=10652d6e
-  mmio W16 24853388 = 000000ff   pc=10652d72
-  mmio W16 2485338e = 0000ffff   pc=10652d78
-  mmio W16 24853392 = 0000ffff   pc=10652d7a
-  mmio W16 24853396 = 0000ffff   pc=10652d7c
-  mmio W16 2485339e = 00000001   pc=10652d80
-  mmio W16 248533f8 = 00000000   pc=10652d88
-  mmio W16 248533fc = 00000dc3   pc=10652d8c
-  mmio W16 248533ca = 00000000   pc=10652d94
-  mmio R16 248533ce = 00000000   pc=10652d98
-  mmio W16 248533ce = 00000000   pc=10652d9e
-  mmio W16 248533cc = 00002020   pc=10652da2
-  mmio R16 248533ce = 00000000   pc=10652da6
-  mmio W16 248533ce = 00000002   pc=10652db0
-  mmio W16 24853000 = 000000bb   pc=10652dc4
-  mmio W16 24853200 = 00000000   pc=10652dce
-  mmio W16 24853002 = 000000bb   pc=10652dc4
-  mmio W16 24853202 = 00000000   pc=10652dce
-  mmio W16 24853004 = 000000bb   pc=10652dc4
-  mmio W16 24853204 = 00000000   pc=10652dce
-  mmio W16 24853006 = 000000bb   pc=10652dc4
-  mmio W16 24853206 = 00000000   pc=10652dce
-  mmio W16 24853008 = 000000bb   pc=10652dc4
-  mmio W16 24853208 = 00000000   pc=10652dce
-  mmio W16 2485300a = 000000bb   pc=10652dc4
-  mmio W16 2485320a = 00000000   pc=10652dce
-  mmio W16 2485300c = 000000bb   pc=10652dc4
-  mmio W16 2485320c = 00000000   pc=10652dce
-  mmio W16 2485300e = 000000bb   pc=10652dc4
-  mmio W16 2485320e = 00000000   pc=10652dce
-  mmio W16 24853010 = 000000bb   pc=10652dc4
-  mmio W16 24853210 = 00000000   pc=10652dce
-  mmio W16 24853012 = 000000bb   pc=10652dc4
-  mmio W16 24853212 = 00000000   pc=10652dce
-  mmio W16 24853014 = 000000bb   pc=10652dc4
-  mmio W16 24853214 = 00000000   pc=10652dce
-  mmio W16 24853016 = 000000bb   pc=10652dc4
-  mmio W16 24853216 = 00000000   pc=10652dce
-  mmio W16 24853018 = 000000bb   pc=10652dc4
-  mmio W16 24853218 = 00000000   pc=10652dce
-  mmio W16 2485301a = 000000bb   pc=10652dc4
-  mmio W16 2485321a = 00000000   pc=10652dce
-  mmio W16 2485301c = 000000bb   pc=10652dc4
-  mmio W16 2485321c = 00000000   pc=10652dce
-  mmio W16 2485301e = 000000bb   pc=10652dc4
-  mmio W16 2485321e = 00000000   pc=10652dce
-  mmio W16 24853020 = 000000bb   pc=10652dc4
-  mmio W16 24853220 = 00000000   pc=10652dce
-  mmio W16 24853022 = 000000bb   pc=10652dc4
-  mmio W16 24853222 = 00000000   pc=10652dce
-  mmio W16 24853024 = 000000bb   pc=10652dc4
-  mmio W16 24853224 = 00000000   pc=10652dce
-  mmio W16 24853026 = 000000bb   pc=10652dc4
-  mmio W16 24853226 = 00000000   pc=10652dce
-  mmio W16 24853028 = 000000bb   pc=10652dc4
-  mmio W16 24853228 = 00000000   pc=10652dce
-  mmio W16 2485302a = 000000bb   pc=10652dc4
-  mmio W16 2485322a = 00000000   pc=10652dce
-  mmio W16 2485302c = 000000bb   pc=10652dc4
-  mmio W16 2485322c = 00000000   pc=10652dce
-  mmio W16 2485302e = 000000bb   pc=10652dc4
-  mmio W16 2485322e = 00000000   pc=10652dce
-  mmio W16 24853030 = 000000bb   pc=10652dc4
-  mmio W16 24853230 = 00000000   pc=10652dce
-  mmio W16 24853032 = 000000bb   pc=10652dc4
-  mmio W16 24853232 = 00000000   pc=10652dce
-  mmio W16 24853034 = 000000bb   pc=10652dc4
-  mmio W16 24853234 = 00000000   pc=10652dce
-  mmio W16 24853036 = 000000bb   pc=10652dc4
-  mmio W16 24853236 = 00000000   pc=10652dce
-  mmio W16 24853038 = 000000bb   pc=10652dc4
-  mmio W16 24853238 = 00000000   pc=10652dce
-  mmio W16 2485303a = 000000bb   pc=10652dc4
-  mmio W16 2485323a = 00000000   pc=10652dce
-  mmio W16 2485303c = 000000bb   pc=10652dc4
-  mmio W16 2485323c = 00000000   pc=10652dce
-  mmio W16 2485303e = 000000bb   pc=10652dc4
-  mmio W16 2485323e = 00000000   pc=10652dce
-  mmio W16 24853040 = 000000bb   pc=10652dc4
-  mmio W16 24853240 = 00000000   pc=10652dce
-  mmio W16 24853042 = 000000bb   pc=10652dc4
-  mmio W16 24853242 = 00000000   pc=10652dce
-  mmio W16 24853044 = 000000bb   pc=10652dc4
-  mmio W16 24853244 = 00000000   pc=10652dce
-  mmio W16 24853046 = 000000bb   pc=10652dc4
-  mmio W16 24853246 = 00000000   pc=10652dce
-  mmio W16 24853048 = 000000bb   pc=10652dc4
-  mmio W16 24853248 = 00000000   pc=10652dce
-  mmio W16 2485304a = 000000bb   pc=10652dc4
-  mmio W16 2485324a = 00000000   pc=10652dce
-  mmio W16 2485304c = 000000bb   pc=10652dc4
-  mmio W16 2485324c = 00000000   pc=10652dce
-  mmio W16 2485304e = 000000bb   pc=10652dc4
-  mmio W16 2485324e = 00000000   pc=10652dce
-  mmio W16 24853050 = 000000bb   pc=10652dc4
-  mmio W16 24853250 = 00000000   pc=10652dce
-  mmio W16 24853052 = 000000bb   pc=10652dc4
-  mmio W16 24853252 = 00000000   pc=10652dce
-  mmio W16 24853054 = 000000bb   pc=10652dc4
-  mmio W16 24853254 = 00000000   pc=10652dce
-  mmio W16 24853056 = 000000bb   pc=10652dc4
-  mmio W16 24853256 = 00000000   pc=10652dce
-  mmio W16 24853058 = 000000bb   pc=10652dc4
-  mmio W16 24853258 = 00000000   pc=10652dce
-  mmio W16 2485305a = 000000bb   pc=10652dc4
-  mmio W16 2485325a = 00000000   pc=10652dce
-  mmio W16 2485305c = 000000bb   pc=10652dc4
-  mmio W16 2485325c = 00000000   pc=10652dce
-  mmio W16 2485305e = 000000bb   pc=10652dc4
-  mmio W16 2485325e = 00000000   pc=10652dce
-  mmio W16 24853060 = 000000bb   pc=10652dc4
-  mmio W16 24853260 = 00000000   pc=10652dce
-  mmio W16 24853062 = 000000bb   pc=10652dc4
-  mmio W16 24853262 = 00000000   pc=10652dce
-  mmio W16 24853064 = 000000bb   pc=10652dc4
-  mmio W16 24853264 = 00000000   pc=10652dce
-  mmio W16 24853066 = 000000bb   pc=10652dc4
-  mmio W16 24853266 = 00000000   pc=10652dce
-  mmio W16 24853068 = 000000bb   pc=10652dc4
-  mmio W16 24853268 = 00000000   pc=10652dce
-  mmio W16 2485306a = 000000bb   pc=10652dc4
-  mmio W16 2485326a = 00000000   pc=10652dce
-  mmio W16 2485306c = 000000bb   pc=10652dc4
-  mmio W16 2485326c = 00000000   pc=10652dce
-  mmio W16 2485306e = 000000bb   pc=10652dc4
-  mmio W16 2485326e = 00000000   pc=10652dce
-  mmio W16 24853070 = 000000bb   pc=10652dc4
-  mmio W16 24853270 = 00000000   pc=10652dce
-  mmio W16 24853072 = 000000bb   pc=10652dc4
-  mmio W16 24853272 = 00000000   pc=10652dce
-  mmio W16 24853074 = 000000bb   pc=10652dc4
-  mmio W16 24853274 = 00000000   pc=10652dce
-  mmio W16 24853076 = 000000bb   pc=10652dc4
-  mmio W16 24853276 = 00000000   pc=10652dce
-  mmio W16 24853078 = 000000bb   pc=10652dc4
-  mmio W16 24853278 = 00000000   pc=10652dce
-  mmio W16 2485307a = 000000bb   pc=10652dc4
-  mmio W16 2485327a = 00000000   pc=10652dce
-  mmio W16 2485307c = 000000bb   pc=10652dc4
-  mmio W16 2485327c = 00000000   pc=10652dce
-  mmio W16 2485307e = 000000bb   pc=10652dc4
-  mmio W16 2485327e = 00000000   pc=10652dce
-  mmio W16 24853080 = 00000050   pc=108d9076
-  mmio W16 24853280 = 00000000   pc=108d9080
-  mmio W16 24853082 = 00000051   pc=108d9076
-  mmio W16 24853282 = 00000007   pc=108d9080
-  mmio W16 24853084 = 000000a4   pc=108d9076
-  mmio W16 24853284 = 0000003d   pc=108d9080
-  mmio W16 24853086 = 000000a8   pc=108d9076
-  mmio W16 24853286 = 00000020   pc=108d9080
-  mmio W16 24853088 = 000000ae   pc=108d9076
-  mmio W16 24853288 = 00000033   pc=108d9080
-  mmio W16 2485308a = 00000098   pc=108d9076
-  mmio W16 2485328a = 00000083   pc=108d9080
-  mmio W16 2485308c = 00000091   pc=108d9076
-  mmio W16 2485328c = 00000000   pc=108d9080
-  mmio W16 2485308e = 000000ad   pc=108d9076
-  mmio W16 2485328e = 00000000   pc=108d9080
-  mmio W16 24853090 = 00000097   pc=108d9076
-  mmio W16 24853290 = 0000003e   pc=108d9080
-  mmio W16 24853092 = 000000a7   pc=108d9076
-  mmio W16 24853292 = 00000000   pc=108d9080
-  mmio W16 24853094 = 000000a3   pc=108d9076
-  mmio W16 24853294 = 00000000   pc=108d9080
-  mmio W16 24853096 = 0000005a   pc=108d9076
-  mmio W16 24853296 = 00000000   pc=108d9080
-  mmio W16 24853098 = 0000007a   pc=108d9076
-  mmio W16 24853298 = 00000000   pc=108d9080
-  mmio W16 248530c0 = 00000093   pc=108d9076
-  mmio W16 248532c0 = 00000000   pc=108d9080
-  mmio W16 248530c2 = 0000005c   pc=108d9076
-  mmio W16 248532c2 = 00000000   pc=108d9080
-  mmio W16 248530c4 = 0000005d   pc=108d9076
-  mmio W16 248532c4 = 00000007   pc=108d9080
-  mmio W16 248530c6 = 0000005e   pc=108d9076
-  mmio W16 248532c6 = 00000007   pc=108d9080
-  mmio W16 248530c8 = 0000005f   pc=108d9076
-  mmio W16 248532c8 = 00000007   pc=108d9080
-  mmio W16 248530ca = 000000a6   pc=108d9076
-  mmio W16 248532ca = 00000058   pc=108d9080
-  mmio W16 248530cc = 000000a8   pc=108d9076
-  mmio W16 248532cc = 00000000   pc=108d9080
-  mmio W16 248530ce = 000000ac   pc=108d9076
-  mmio W16 248532ce = 00000037   pc=108d9080
-  mmio W16 248530d0 = 0000009a   pc=108d9076
-  mmio W16 248532d0 = 00000003   pc=108d9080
-  mmio W16 248530d2 = 000000ae   pc=108d9076
-  mmio W16 248532d2 = 00000000   pc=108d9080
-  mmio W16 248530d4 = 00000091   pc=108d9076
-  mmio W16 248532d4 = 00000000   pc=108d9080
-  mmio W16 248530d6 = 00000099   pc=108d9076
-  mmio W16 248532d6 = 00000000   pc=108d9080
-  mmio W16 248530d8 = 000000ab   pc=108d9076
-  mmio W16 248532d8 = 0000001c   pc=108d9080
-  mmio W16 248530da = 000000ad   pc=108d9076
-  mmio W16 248532da = 00000000   pc=108d9080
-  mmio W16 248530dc = 000000a5   pc=108d9076
-  mmio W16 248532dc = 00000000   pc=108d9080
-  mmio W16 248530de = 000000a7   pc=108d9076
-  mmio W16 248532de = 00000000   pc=108d9080
-  mmio W16 248530e0 = 000000d0   pc=108d9076
-  mmio W16 248532e0 = 00000003   pc=108d9080
-  mmio W16 248530e2 = 0000005a   pc=108d9076
-  mmio W16 248532e2 = 00000000   pc=108d9080
-  mmio W16 248530e4 = 00000058   pc=108d9076
-  mmio W16 248532e4 = 00000007   pc=108d9080
-  mmio W16 248530e6 = 0000007a   pc=108d9076
-  mmio W16 248532e6 = 00000000   pc=108d9080
-  mmio W16 24853140 = 00000000   pc=108d9076
-  mmio W16 24853340 = 0000023a   pc=108d9080
-  mmio W16 24853142 = 00000000   pc=108d9076
-  mmio W16 24853342 = 00000001   pc=108d9080
-  mmio W16 24853144 = 00000000   pc=108d9076
-  mmio W16 24853344 = 00000250   pc=108d9080
-  mmio W16 24853146 = 00000000   pc=108d9076
-  mmio W16 24853346 = 00000001   pc=108d9080
-  mmio W16 24853148 = 00000000   pc=108d9076
-  mmio W16 24853348 = 00000056   pc=108d9080
-  mmio W16 2485314a = 00000000   pc=108d9076
-  mmio W16 2485334a = 00000001   pc=108d9080
-  mmio W16 2485314c = 00000000   pc=108d9076
-  mmio W16 2485334c = 00000160   pc=108d9080
-  mmio W16 2485314e = 00000000   pc=108d9076
-  mmio W16 2485334e = 00000001   pc=108d9080
-  mmio W16 24853150 = 00000000   pc=108d9076
-  mmio W16 24853350 = 00000276   pc=108d9080
-  mmio W16 24853152 = 00000000   pc=108d9076
-  mmio W16 24853352 = 00000001   pc=108d9080
-  mmio W16 24853154 = 00000000   pc=108d9076
-  mmio W16 24853354 = 000002ce   pc=108d9080
-  mmio W16 24853156 = 00000000   pc=108d9076
-  mmio W16 24853356 = 00000001   pc=108d9080
-  mmio W16 24853158 = 00000000   pc=108d9076
-  mmio W16 24853358 = 00000292   pc=108d9080
-  mmio W16 2485315a = 00000000   pc=108d9076
-  mmio W16 2485335a = 00000001   pc=108d9080
-  mmio W16 2485315c = 00000001   pc=108d9076
-  mmio W16 2485335c = 00000292   pc=108d9080
-  mmio W16 2485315e = 00000000   pc=108d9076
-  mmio W16 2485335e = 00000001   pc=108d9080
-  mmio W16 24853160 = 0000000b   pc=108d9076
-  mmio W16 24853360 = 0000022f   pc=108d9080
-  mmio W16 24853162 = 00000000   pc=108d9076
-  mmio W16 24853362 = 00000001   pc=108d9080
-  mmio W16 24853164 = 00000000   pc=108d9076
-  mmio W16 24853364 = 000004ab   pc=108d9080
-  mmio W16 24853166 = 00000000   pc=108d9076
-  mmio W16 24853366 = 00000001   pc=108d9080
-  mmio W16 24853168 = 00000000   pc=108d9076
-  mmio W16 24853368 = 0000071c   pc=108d9080
-  mmio W16 2485316a = 00000000   pc=108d9076
-  mmio W16 2485336a = 00000001   pc=108d9080
-  mmio W16 2485316c = 00000000   pc=108d9076
-  mmio W16 2485336c = 00000230   pc=108d9080
-  mmio W16 2485316e = 00000000   pc=108d9076
-  mmio W16 2485336e = 00000251   pc=108d9080
-  mmio W16 24853170 = 00000000   pc=108d9076
-  mmio W16 24853370 = 00000230   pc=108d9080
-  mmio W16 24853172 = 00000000   pc=108d9076
-  mmio W16 24853372 = 00000161   pc=108d9080
-  mmio W16 24853174 = 00000000   pc=108d9076
-  mmio W16 24853374 = 000009cc   pc=108d9080
-  mmio W16 24853176 = 00000000   pc=108d9076
-  mmio W16 24853376 = 00000001   pc=108d9080
-  mmio W16 24853178 = 00000000   pc=108d9076
-  mmio W16 24853378 = 00000140   pc=108d9080
-  mmio W16 2485317a = 00000000   pc=108d9076
-  mmio W16 2485337a = 00000251   pc=108d9080
-  mmio W16 2485317c = 00000000   pc=108d9076
-  mmio W16 2485337c = 00000140   pc=108d9080
-  mmio W16 2485317e = 00000000   pc=108d9076
-  mmio W16 2485337e = 00000161   pc=108d9080
-  mmio W16 248533de = 00000000   pc=10652dfa
-  mmio W16 248533e0 = 00000000   pc=10652e00
-  mmio W16 248533e2 = 00000000   pc=10652e02
-  mmio W16 248533e4 = 000000fc   pc=10652e06
-  mmio W16 248533e6 = 00000000   pc=10652e0a
-  mmio W16 248533e8 = 000000fc   pc=10652e0e
-  mmio W16 248533ea = 00000000   pc=10652e12
-  mmio W16 248533ec = 00000000   pc=10652e14
-  mmio W16 248533ee = 00000000   pc=10652e16
-  mmio W16 248533f0 = 00000000   pc=10652e18
-  mmio W16 248533f2 = 00000000   pc=10652e1a
-  mmio W16 248533f4 = 00000000   pc=10652e1c
-  mmio W16 248530e4 = 000000bb   pc=10652e36
-  mmio R16 248533c8 = 00000000   pc=10652e3c
-  mmio W16 248533c8 = 00000000   pc=10652e46
-  mmio W16 248533c0 = 00000000   pc=10652e4a
-  mmio R16 24853384 = 00000000   pc=10652e4e
-  mmio W16 24853384 = 00000009   pc=10652e56
-  mmio R16 248533f6 = 00000000   pc=10652e5c
-  mmio W16 248533f6 = 00000d83   pc=10652e68
-  mmio R32 24841000 = 024925d2   pc=10631b64
-  mmio W16 24853390 = 0000eeff   pc=10652e76
-  mmio W16 24853394 = 0000ffff   pc=10652e7c
-  mmio W16 24853398 = 0000fe00   pc=10652e82
-  mmio R16 248533fe = 00000000   pc=10652e88
-  mmio W16 248533fe = 00000003   pc=10652e92
-  mmio W16 24853388 = 00000003   pc=10652ed8
-  mmio R16 2485338a = 00000010   pc=10652edc
-  mmio W16 2485338a = 00000013   pc=10652ee4
-  [boot] checkpoint 0x87  from 107fbc88
-  [boot] checkpoint 0x70  from 107fbba2
-  mmio W16 2484f02e = 00002574   pc=101b83e0
-  mmio W16 2484f01a = 00000100   pc=101b841a
-  mmio W16 2484f01a = 00000100   pc=101b841a
-  mmio R16 2484f016 = 00000000   pc=1008b63c
-  mmio W16 2484f016 = 00000000   pc=1008b646
-  mmio W16 2484f014 = 00000001   pc=1008b64e
-  mmio R16 2484f028 = 00000001   pc=1008b684
-  mmio W16 2484f028 = 00000101   pc=1008b690
-  mmio R16 2484f016 = 00000000   pc=1008b696
-  mmio W16 2484f016 = 00000000   pc=1008b6a0
-  mmio R32 29890064 = 00000000   pc=03fc3a94
-  mmio R32 29890060 = 00000000   pc=03fc3aa0
-  mmio R32 2989005c = 00000000   pc=03fc3ab4
-  mmio R32 29890058 = 00000000   pc=03fc3ac0
-  mmio R32 29890064 = 00000000   pc=03fc3a94
-  mmio R32 29890060 = 00000000   pc=03fc3aa0
-  mmio R32 2989005c = 00000000   pc=03fc3ab4
-  mmio R32 29890058 = 00000000   pc=03fc3ac0
-  rom rom_37ce_sec(0x12008ddc, 0x2953, 0x10cc40b8, 0x10) -> 0x0  lr=10aef897
-  [boot] checkpoint 0x7c  from 107fbc1a
-  [boot] checkpoint 0x89  from 107fbc9c
-  [boot] checkpoint 0x88  from 107fbc92
-  [boot] checkpoint 0x7f  from 107fbc38
-  [boot] checkpoint 0x85  from 107fbc74
-  [boot] checkpoint 0x80  from 107fbc42
-  [boot] checkpoint 0x82  from 107fbc56
-  [boot] checkpoint 0x81  from 107fbc4c
-  [boot] checkpoint 0x8a  from 107fbca6
-  [boot] checkpoint 0x32  from 10870fde
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_db_ftr
-  [fw] wait cnf from SP, port name is p/dl_db_ftr
-  [fw] out waiting_for_cnf
-  [boot] checkpoint 0x264  from 100b983e
-  [fw] out send_start_req
-  [fw] Power up from engine, powerup_reason is 8.
-  mmio R16 2485000e = 00000000   pc=10633472
-  mmio R16 2485000c = 00000000   pc=10633478
-  mmio R16 2485000a = 00000000   pc=1063347e
-  mmio R16 24850008 = 00000000   pc=10633484
-  mmio R16 24850006 = 00000000   pc=1063348a
-  mmio R16 24850004 = 00000000   pc=10633490
-  mmio R16 24850002 = 00000000   pc=10633496
-  mmio R16 24850000 = 00000000   pc=1063349c
-  [boot] checkpoint 0x25f  from 100b151e
-  [boot] checkpoint 0x260  from 100b1a32
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_subsidy_lck
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_sim_mgr
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_clock
-  [fw] wait cnf from SP, port name is p/dl_clock
-  [fw] out waiting_for_cnf
-  [boot] checkpoint 0x264  from 100b983e
-  [fw] out send_start_req
-  [fw] out power_up_in_normal_mode
-  [fw] Out start_cnf_msg_in_start_state,dl_cause is 0,app_cause is 532734
-  mmio W32 24843014 = ffffffff   pc=100c4248
-  mmio W32 24843018 = ffffffff   pc=100c424a
-  [boot] checkpoint 0x25e  from 100b065e
-  [fw] out waiting_for_cnf
-  [fw] out this_is_the_expected_confirm
-  [fw] out start_cnf_msg_in_pre_ready_state
-  [fw] out waiting_for_cnf
-  [fw] out this_is_the_expected_confirm
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_keypad
-  [fw] wait cnf from SP, port name is p/dl_keypad
-  [fw] out waiting_for_cnf
-  [boot] checkpoint 0x264  from 100b983e
-  [fw] out send_start_req
-  [fw] out start_cnf_msg_in_pre_ready_state
-  [boot] checkpoint 0x263  from 100b8720
-  [fw] out waiting_for_cnf
-  [fw] out this_is_the_expected_confirm
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_acc
-  [fw] wait cnf from SP, port name is p/dl_acc
-  [fw] out waiting_for_cnf
-  [boot] checkpoint 0x264  from 100b983e
-  [fw] out send_start_req
-  [fw] out start_cnf_msg_in_pre_ready_state
-  [boot] checkpoint 0x25c  from 100a725a
-  [fw] out waiting_for_cnf
-  [fw] out this_is_the_expected_confirm
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_audio
-  [fw] out start_req_has_been_sent_to
-  [fw] out send_app_started_ind
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is APP
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_almclk
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_sig_reg
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_sig_ss
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_sig_call
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_field_test
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_media_vr
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_media_va
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_call_meters
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_data_meters
-  [fw] out start_req_has_been_sent_to
-  [fw] out mark_start_req_bit
-  [fw] send start to SP, port name is p/dl_db_sc
-  [fw] wait cnf from SP, port name is p/dl_db_sc
-  [fw] out waiting_for_cnf
-  [boot] checkpoint 0x264  from 100b983e
-  [fw] out send_start_req
-  [fw] out start_cnf_msg_in_pre_ready_state
-  [boot] checkpoint 0x25b  from 100a69f8
-  [fw] out waiting_for_cnf
-  [fw] out this_is_the_expected_confirm
-  [fw] out handle_sp_start_cnf_msg
-  [fw] out waiting_for_cnf
-  [fw] out this_is_the_expected_confirm
-  [fw] out handle_sp_start_cnf_msg
-  [fw] out waiting_for_cnf
-  [fw] out this_is_the_expected_confirm
-  [fw] out handle_sp_start_cnf_msg
-  [fw] out waiting_for_cnf
-  [fw] out this_is_the_expected_confirm
-  [fw] out handle_sp_start_cnf_msg
-  mmio R32 24843010 = 00000000   pc=10085c74
-  mmio R32 29890004 = 0000001f   pc=03ff0768
-  [fw] PUP app starts.
-  [fw] PUP app starts, ev_code is 532734
-  [fw] DL_FEATRUE_ID_MOT_GREET_AVAILABLE is 1
-  [fw] DL_FEATRUE_ID_POWER_UP_TONE is 0
-  [fw] DL_FEATRUE_ID_CURRENT_ALERT_TYPE is 16
-  [fw] DL_FEATRUE_ID_USER_TEXT_STRING is 302332076
-  [fw] DL_FEATRUE_ID_WAKE_UP_GREETING is 0
-  [fw] PUP app has received GAIN_FOCUS and GRANT_TOKEN.
-  [fw] PUP app has sent events to start other apps.
-  [fw] DL_FEATRUE_ID_MOT_GREET_AVAILABLE is 1
-  [fw] DL_FEATRUE_ID_POWER_UP_TONE is 1
-  [fw] DL_FEATRUE_ID_CURRENT_ALERT_TYPE is 0
-  [fw] DL_FEATRUE_ID_USER_TEXT_STRING is 302332076
-  [fw] DL_FEATRUE_ID_WAKE_UP_GREETING is 0
-  [fw] PERS Start, ev_code is 3299
-  [fw] PERS JavaOneClick Start app failed.
-  [fw] MMA Start, ev_code is 3279
-  [fw] MMA Init Enter, ev_code is 3279
-  [fw] MMA DCP open succeed
-  [fw] MMA Start return, status = 0
-  [fw] MMA idle get homekey, return status is 0
-  [fw] MMA Exit.
-  [fw] out waiting_for_cnf
-  [fw] out this_is_the_expected_confirm
-  [fw] out handle_sp_start_cnf_msg
-  mmio R32 24845024 = 00000000   pc=03ff0480
-  mmio W32 24845024 = 00000000   pc=03ff0488
-  mmio R32 24845028 = 00000000   pc=03ff06a8
-  mmio W32 24845028 = 00000000   pc=03ff06b0
-  mmio R32 2484502c = 00000000   pc=03ff0694
-  mmio W32 2484502c = 00000001   pc=03ff069e
-  mmio R32 2484502c = 00000001   pc=03ff0694
-  mmio W32 2484502c = 00000001   pc=03ff069e
-  mmio W16 2485163a = 00000d00   pc=03ff0b02
-  mmio W16 2485163c = 000001c0   pc=03ff0b02
-  mmio W16 2485163a = 00000d00   pc=03ff0b02
-  mmio W16 2485163c = 000001c0   pc=03ff0b02
-  [fw] Mot greeting animation has completed.
-  [fw] Sim is enabled,begins to chsim.
-  [fw] PUP app sends event to start SIM app, SIMVerified.
-  pmic R reg1  -> 0x000020
-  pmic R reg9  -> 0x000061
 
-== stopped: budget   (55,015,780,001 insns, 1253 interrupts taken)
-r0 =00000001  r1 =c4800000  r2 =12006ad4  r3 =80000000
-r4 =00000001  r5 =00000000  r6 =00000000  r7 =00000000
-r8 =00000000  r9 =00000000  r10=00000000  r11=00000000
-r12=1066535f  r13=03ffff2c  r14=108793f3  r15=10665392
-cpsr=000002f3 mode=0x13 T=1
-backtrace: 10879472 107fbcaa 107fbaf2 10ab92a2 10871486 10628a10
+== stopped: budget   (300,000,000 insns, 0 interrupts taken)
+r0 =80000000  r1 =2485101a  r2 =00008000  r3 =03fffc48
+r4 =03fffcc0  r5 =00000008  r6 =00000003  r7 =248515fa
+r8 =00000000  r9 =00000000  r10=00000000  r11=122cc1b4
+r12=03ff0923  r13=03fffc48  r14=03ff2be4  r15=03ff0b7a
+cpsr=a00002f3 mode=0x13 T=1
+backtrace: 10ac7c34 10ac7baa
 
 -- code at pc
-10665382: 4093       lsls r3, r2
-10665384: 4018       ands r0, r3
-10665386: d006       beq #0x10665396
-10665388: 4a78       ldr r2, [pc, #0x1e0]   ; =12006ad4
-1066538a: 00c9       lsls r1, r1, #3
-1066538c: 1889       adds r1, r1, r2
-1066538e: 6849       ldr r1, [r1, #4]
-10665390: 1c20       adds r0, r4, #0
-10665392: 2900       cmp r1, #0
-10665394: d000       beq #0x10665398
-10665396: 2000       movs r0, #0
-10665398: bc10       pop {r4}
-1066539a: 4770       bx lr
-1066539c: b5f0       push {r4, r5, r6, r7, lr}
-1066539e: 1c0b       adds r3, r1, #0
-106653a0: 4970       ldr r1, [pc, #0x1c0]   ; =107fcdac
+03ff0b6a:            .word
+03ff0b6c:            .word
+03ff0b6e:            .word
+03ff0b70:            .word
+03ff0b72:            .word
+03ff0b74:            .word
+03ff0b76:            .word
+03ff0b78:            .word
+03ff0b7a:            .word
+03ff0b7c:            .word
+03ff0b7e:            .word
+03ff0b80:            .word
+03ff0b82:            .word
+03ff0b84:            .word
+03ff0b86:            .word
+03ff0b88:            .word
+
+-- display: 56 blits, 1 fills -> out/screen.png
 
 -- last MMIO accesses
-  pc=03ff0694 R32 2484502c = 00000001
-  pc=03ff069e W32 2484502c = 00000001
-  pc=03ff0694 R32 2484502c = 00000001
-  pc=03ff069e W32 2484502c = 00000001
-  pc=03ff0694 R32 2484502c = 00000001
-  pc=03ff069e W32 2484502c = 00000001
-  pc=03ff0694 R32 2484502c = 00000001
-  pc=03ff069e W32 2484502c = 00000001
-  pc=03ff0694 R32 2484502c = 00000001
-  pc=03ff069e W32 2484502c = 00000001
-  pc=03ff0694 R32 2484502c = 00000001
-  pc=03ff069e W32 2484502c = 00000001
-  pc=03ff0694 R32 2484502c = 00000001
-  pc=03ff069e W32 2484502c = 00000001
-  pc=03ff0694 R32 2484502c = 00000001
-  pc=03ff069e W32 2484502c = 00000001
+  pc=03ff2b78 R16 24854018 = 000001c0
+  pc=03ff0a86 W16 2485140e = 000000f6
+  pc=03ff0b02 W16 248515ea = 00000f01
+  pc=03ff0b02 W16 248515ec = 00000204
+  pc=03ff0b02 W16 248515ee = 00000000
+  pc=03ff0b02 W16 248515f0 = 00000001
+  pc=03ff0b02 W16 248515f2 = 00000000
+  pc=03ff0b02 W16 248515f4 = 00000008
+  pc=03ff0b02 W16 248515f6 = 000003ff
+  pc=03ff0b02 W16 248515f8 = 0000fd2c
+  pc=03ff0b2e R16 2485140e = 000000f6
+  pc=03ff0b36 W16 2485140e = 000000f6
+  pc=03ff0b58 R16 2485101a = 00000028
+  pc=03ff0b60 W16 2485101a = 00000020
+  pc=03ff0b6a R16 2485101a = 00000020
+  pc=03ff0b72 W16 2485101a = 00000028

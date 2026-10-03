@@ -53,6 +53,21 @@ format strings. This often tells us which subsystem is waiting on what.
 | M4 | Boot-critical peripherals: power IC (power-up reason, battery), flash (CFI and Intel commands), DSP handshake stub, keypad idle, watchdog | Boot proceeds past power-up checks into the UI |
 | M5 | Display: find the framebuffer, then the LCD path; show it in a window and save PNGs | **The Motorola boot logo appears** |
 
+## Status (2026-10-03)
+
+| # | State |
+|---|---|
+| M0 | Done. Unicorn ARM926 big-endian; CPSR.E must stay set on every CPSR write |
+| M1 | Done. Entry `0x106289BE` from code-group header word 0 |
+| M2 | Done. C runtime, boot ROM stubs, power IC, QSPI, watchdog |
+| M3 | Done. AITC + OS countdown timer; idle fast-forward; tasks run, power-up app runs |
+| M4 | Done enough: power-on reason, PDS, flash, DSP download + handshake, SIM absent |
+| M5 | **Done: the HELLOMOTO boot screen renders** from the ATI Imageon's frame buffer (`out/screen.png`) |
+
+Temporary shortcuts to remove later: boot battery check override (needs ADC + PMIC interrupt),
+SIM-absent overrides, PM4 opcode 0x1B unimplemented, time unit (1 ms per time() unit) not
+calibrated.
+
 ## Known risks
 
 - **Missing bootloader state.** It sets up clocks, SDRAM timing and chip selects that the firmware

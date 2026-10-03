@@ -2,11 +2,14 @@
 
 
 class Regs:
-    """Plain register file: reads return what was written (with optional fixed overrides)."""
+    """Plain register file: reads return what was written, with optional fixed values and
+    self-clearing bits (word offset -> mask of 32-bit-word bits that the hardware clears
+    immediately, e.g. a start/busy bit for an operation that completes instantly)."""
 
-    def __init__(self, size, fixed=None):
+    def __init__(self, size, fixed=None, selfclear=None):
         self.mem = bytearray(size)
         self.fixed = fixed or {}
+        self.selfclear = selfclear or {}
 
     def read(self, off, size):
         if off in self.fixed:
@@ -15,6 +18,10 @@ class Regs:
 
     def write(self, off, size, value):
         self.mem[off:off + size] = value.to_bytes(size, 'big')
+        for word, mask in self.selfclear.items():
+            if word <= off < word + 4:
+                v = int.from_bytes(self.mem[word:word + 4], 'big') & ~mask
+                self.mem[word:word + 4] = v.to_bytes(4, 'big')
 
     def get16(self, off):
         return int.from_bytes(self.mem[off:off + 2], 'big')
@@ -64,7 +71,8 @@ class QSPI:
     +0x480: TX word, +0x484: RX word (as used so far)."""
 
     def __init__(self, devices, log):
-        self.r = Regs(0x1000)
+        # +0x010 (16-bit): bits 0 / 8 = queue active, set by software, cleared when done
+        self.r = Regs(0x1000, selfclear={0x10: 0x01010000})
         self.devices = devices          # chip-select -> device with transfer(word)
         self.log = log
         self.done = 0xFFFFFFFF          # 32 channel-done bits; idle (1) after reset
@@ -96,3 +104,42 @@ class QSPI:
             self.r.mem[0x484:0x488] = reply.to_bytes(4, 'big')
             self.done |= 1 << ch
             self.r.set16(0x006, value & ~0x20)      # hardware clears the start bit
+
+
+class DSPHostPort:
+    """MCU side of the DSP interface, registers at 0x2485BFF2.. (offsets from 0x2485BFF0).
+
+    Boot download (0x10AD5B90): +4 control (0x80 = hold DSP in reset), +6 status (bit 7 = DSP
+    busy, bit 14 = DSP firmware running, bit 15 = buffer taken), +0xA next-buffer command,
+    +0xE reply (0x8001 = block OK). There is no DSP: it always looks ready and running."""
+
+    def __init__(self, log):
+        self.r = Regs(0x10, fixed={0x6: 0xC000, 0xE: 0x8001})
+        self.log = log
+
+    def read(self, off, size):
+        return self.r.read(off, size)
+
+    def write(self, off, size, value):
+        self.r.write(off, size, value)
+
+
+class FreeRunCounter:
+    """64-bit free-running counter at 0x2484A000: +0 high word, +4 low word.
+
+    Driven by the machine's virtual clock (instructions executed). Assumes a 13 MHz counter
+    and a 52 MHz CPU at ~1 instruction per cycle (to be calibrated)."""
+
+    def __init__(self, machine, ticks_per_insn=0.25):
+        self.m = machine
+        self.k = ticks_per_insn
+
+    def value(self):
+        return int(self.m.insns * self.k)
+
+    def read(self, off, size):
+        v = self.value()
+        return (v >> 32) & 0xFFFFFFFF if off == 0 else v & 0xFFFFFFFF
+
+    def write(self, off, size, value):
+        pass

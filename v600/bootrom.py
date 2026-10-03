@@ -12,15 +12,17 @@ ROUTINES = {
     0x37CE: ('rom_37ce_sec', 0),         # (0x11, buf, 0, r3, [sp]) security service
     0xFCDC: ('rom_fcdc_init', 0),        # first call of the boot sequence, no args
     0xFFD0: ('rom_ffd0', 0),             # (0) -> u16
-    0xFFF4: ('rom_fff4_get', 0),         # (id, buf) -> 1 on success
+    0xFFF4: ('dsp_receive', lambda m: m.dspmsg.receive(m)),   # (queue, buf) -> 1 if a message
     0x100C2: ('rom_100c2_get', 0),       # (id, buf) -> 1 on success
-    0x101CC: ('rom_101cc', 0),           # (type, buf, len, flag)
+    0x101CC: ('dsp_send', lambda m: m.dspmsg.send(m)),        # (type, buf, nwords, flag) -> 1
     0x102AA: ('rom_102aa', 0),           # (1)
     0x102C0: ('rom_102c0', 0),
 }
 
 # Exception vectors (bootloader-owned at 0). Point IRQ/FIQ at the firmware's veneers that the
 # C runtime copies into internal RAM.
+TRAP = 0x100
+VECTOR_NAMES = ['reset', 'undefined instruction', 'SWI', 'prefetch abort', 'data abort', 'reserved']
 IRQ_VENEER = 0x03FC3604
 FIQ_VENEER = 0x03FC3694
 
@@ -30,9 +32,13 @@ def install(m):
     # vectors: ldr pc, [pc, #0x18] for each of the 8 slots, then a table of targets
     for slot in range(8):
         uc.mem_write(slot * 4, bytes.fromhex('e59ff018'))
-    targets = [0, 0, 0, 0, 0, 0, IRQ_VENEER, FIQ_VENEER]
+    # Unhandled exceptions land on traps at 0x100 + 8*slot that report and stop.
+    targets = [TRAP + 8 * i for i in range(6)] + [IRQ_VENEER, FIQ_VENEER]
     for slot, t in enumerate(targets):
         uc.mem_write(0x20 + slot * 4, t.to_bytes(4, 'big'))
+    for slot in range(6):
+        uc.mem_write(TRAP + 8 * slot, bytes.fromhex('eafffffe'))      # b .
+        m.hook(TRAP + 8 * slot, _make_trap(VECTOR_NAMES[slot]))
     m.calls = {}
     for addr, (name, ret) in ROUTINES.items():
         uc.mem_write(addr, bytes.fromhex('4770'))            # bx lr
@@ -50,3 +56,14 @@ def _make_stub(name, ret):
                   f'lr={uc.reg_read(UC_ARM_REG_LR):08x}')
         uc.reg_write(UC_ARM_REG_R0, value)
     return stub
+
+
+def _make_trap(name):
+    def trap(m):
+        from unicorn.arm_const import UC_ARM_REG_SPSR
+        lr = m.uc.reg_read(UC_ARM_REG_LR)
+        spsr = m.uc.reg_read(UC_ARM_REG_SPSR)
+        m.log(f'!! exception: {name}  lr={lr:08x} spsr={spsr:08x} (thumb={(spsr >> 5) & 1})')
+        m.log('   backtrace: ' + ' '.join(f'{a:08x}' for a in m.backtrace()))
+        m.stop(name)
+    return trap

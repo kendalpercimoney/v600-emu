@@ -35,6 +35,7 @@ class Machine:
         self.mmio_log = collections.Counter()        # (kind, addr, size) -> count
         self.mmio_trace = collections.deque(maxlen=64)
         self.mmio_reads = 0
+        self.mmio_writes = 0                         # excluding watchdog service writes
         self.verbose_mmio = True
         # Unicorn's mmio_map mangles big-endian accesses, so MMIO is plain memory plus hooks:
         # the read hook stores the model's value just before the load, unmodelled registers
@@ -44,6 +45,13 @@ class Machine:
         uc.hook_add(UC_HOOK_MEM_WRITE, self._mmio_write, begin=MMIO[0], end=MMIO[0] + MMIO[1] - 1)
         uc.hook_add(UC_HOOK_MEM_UNMAPPED, self._unmapped)
         self.code_hooks = {}
+        self.stopped = None                          # set by hooks to end run()
+        self.insns = 0                               # virtual clock: instructions executed
+        self.aitc = None                             # interrupt controller (board.py)
+        self.timers = []                             # objects with update() / next_event()
+        self.irq_count = 0
+        self.idle_hint = False                       # set by the idle-loop hook
+        self.counter = None                          # FreeRunCounter, for fast-forward
         self.fault = None
 
     # ---- MMIO -------------------------------------------------------------
@@ -67,6 +75,8 @@ class Machine:
 
     def _mmio_write(self, uc, access, addr, size, value, _):
         value &= (1 << (size * 8)) - 1
+        if addr != 0x24849002:
+            self.mmio_writes += 1
         r = self._route(addr)
         if r:
             r[1].write(addr - r[0], size, value)
@@ -119,6 +129,26 @@ class Machine:
                 break
         return out
 
+    def _service_interrupts(self):
+        from .irq import deliver
+        for t in self.timers:
+            t.update()
+        if self.idle_hint and not self.aitc.irq_line():
+            # The OS is idling: jump the virtual clock to the next timer event.
+            events = [e for e in (t.next_event() for t in self.timers) if e is not None]
+            if events and self.counter is not None:
+                target_insns = int(min(events) / self.counter.k) + 1
+                if target_insns > self.insns:
+                    self.insns = target_insns
+                for t in self.timers:
+                    t.update()
+        self.idle_hint = False
+        deliver(self)
+
+    def stop(self, why):
+        self.stopped = why
+        self.uc.emu_stop()
+
     def hook(self, addr, fn):
         """Call fn(machine) whenever execution reaches addr (Thumb or ARM)."""
         self.code_hooks[addr & ~1] = fn
@@ -154,7 +184,7 @@ class Machine:
         start = self.start
         while done < max_insns:
             self.fault = None
-            reads_before = self.mmio_reads
+            reads_before, writes_before = self.mmio_reads, self.mmio_writes
             try:
                 self.uc.emu_start(start, 0xFFFFFFFF, count=slice_)
             except UcError as e:
@@ -164,14 +194,23 @@ class Machine:
                     self.log(f'   unmapped access type={acc} addr={a:08x} size={s} value={v:x}')
                 return 'error'
             done += slice_
+            self.insns += slice_
+            if self.aitc is not None:
+                self._service_interrupts()
+                start = self.pc() | (1 if self.thumb() else 0)
+            if self.stopped:
+                self.log(f'!! stopped by hook: {self.stopped}')
+                self.start = self.pc() | (1 if self.thumb() else 0)
+                return 'hook'
             pc = self.pc()
             start = pc | (1 if self.thumb() else 0)
             pcs.append(pc)
-            polled.append(self.mmio_reads > reads_before)
+            polled.append(self.mmio_reads > reads_before and self.mmio_writes == writes_before)
             recent = list(pcs)[-poll_slices:]
             if (len(recent) == poll_slices and all(list(polled)[-poll_slices:])
-                    and max(recent) - min(recent) < 0x100):
-                self.log(f'!! poll stall: pc in {min(recent):08x}-{max(recent):08x} after {done} insns')
+                    and len({p >> 6 for p in recent}) <= 3):
+                where = ' '.join(f'{p:08x}' for p in sorted(set(recent)))
+                self.log(f'!! poll stall: pc at {where} after {done} insns')
                 self.start = start
                 return 'stall'
             if len(pcs) == spin_slices and max(pcs) - min(pcs) < 0x100:

@@ -2,7 +2,7 @@
 import sys
 sys.path.insert(0, 'tools')
 from v600.machine import Machine
-from v600 import board
+from v600 import board, fwlog
 from armdis import dis
 
 
@@ -24,6 +24,12 @@ def trace_boot(m):
             m.log(f'!! {name}: lr={m.uc.reg_read(UC_ARM_REG_LR):08x} r0={m.r(0):#x}')
             m.log('   backtrace: ' + ' '.join(f'{a:08x}' for a in m.backtrace()))
         return f
+    def panic(m):
+        from v600.fwlog import read_cstr
+        msg = read_cstr(m, m.r(3)) if 0x10000000 <= m.r(3) < 0x13000000 else ''
+        m.log(f'!! PANIC code={m.r(0):#x} args=({m.r(1):#x}, {m.r(2):#x}) "{msg}"')
+        m.log('   backtrace: ' + ' '.join(f'{a:08x}' for a in m.backtrace()))
+    m.hook(0x10AC722C, panic)
     m.hook(0x10AB7F6A, reset_hook('watchdog soft reset'))
     m.hook(0x10AB7FA8, reset_hook('watchdog hard reset'))
     m.hook(0x106330B8, checkpoint)
@@ -36,8 +42,9 @@ def main():
     board.build(m)
     m.reset()
     trace_boot(m)
+    fwlog.install(m)
     result = m.run(max_insns=int(sys.argv[1]) if len(sys.argv) > 1 else 50_000_000)
-    print(f'\n== stopped: {result}')
+    print(f'\n== stopped: {result}   ({m.insns:,} insns, {m.irq_count} interrupts taken)')
     print(m.dump_regs())
     print('backtrace:', ' '.join(f'{a:08x}' for a in m.backtrace()))
     pc = m.pc()

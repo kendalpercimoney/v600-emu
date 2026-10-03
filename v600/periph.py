@@ -31,21 +31,44 @@ class Regs:
 
 
 class PowerIC:
-    """The power-management IC behind the QSPI (32 x 25-bit registers, PCAP2-style).
+    """The power-management IC behind the QSPI (PCAP2: 32 x 25-bit registers).
 
     SPI word: bit31 = write, bits 30..26 = register, bits 24..0 = data. A read returns the
-    register value in the reply word. Register 0 is the interrupt status: write 1 to clear."""
+    register value in the reply word. Register 0 is the interrupt status: write 1 to clear.
 
-    ISR = 0
+    ADC (Linux ezx-pcap.h): writing ASC (bit 22) to reg 10 (ADR) converts the 7 channels of
+    the bank selected by reg 9 (ADC) bit 2; ADA1 (reg 9 bits 6:4) / ADA2 (9:7) pick which
+    results appear in ADR ADD1 (9:0) / ADD2 (19:10). Completion sets ISR bit 0 (ADCDONE)."""
+
+    ISR, MSR, ADC, ADR = 0, 1, 9, 10
+    ASC = 1 << 22
+    ADCDONE = 1 << 0
+    # 10-bit readings for bank 0: coin cell, battery, B+, charger port (none), battery
+    # thermistor (room temperature), charger ID (none), AD6. Bank 1 (touch screen, spare
+    # inputs) reads mid-scale. Calibration is unknown: values chosen for a healthy battery.
+    ADC_BANK0 = [0x300, 0x2C0, 0x2C0, 0x000, 0x200, 0x3FF, 0x200]
+    ADC_BANK1 = [0x200] * 7
 
     def __init__(self, log):
         self.log = log
         self.regs = [0] * 32
         self.seen = set()
+        self.adc = list(self.ADC_BANK0)
+        self.on_int = None              # called with the INT pin level (ISR & ~MSR != 0)
+
+    def int_level(self):
+        return bool(self.regs[self.ISR] & ~self.regs[self.MSR] & 0x1FFFFFF)
 
     def transfer(self, data):
         word = int.from_bytes(data[:4], 'big')
         return self.transfer_word(word).to_bytes(4, 'big')
+
+    def _adr(self):
+        ctl = self.regs[self.ADC]
+        a1, a2 = (ctl >> 4) & 7, (ctl >> 7) & 7
+        v1 = self.adc[a1] if a1 < 7 else 0
+        v2 = self.adc[a2] if a2 < 7 else 0
+        return (self.regs[self.ADR] & ~0xFFFFF & ~self.ASC) | v1 | (v2 << 10)
 
     def transfer_word(self, word):
         write = bool(word & 0x80000000)
@@ -56,6 +79,14 @@ class PowerIC:
                 self.regs[reg] &= ~data
             else:
                 self.regs[reg] = data
+            if reg == self.ADR and data & self.ASC:          # start conversion: instant
+                bank1 = bool(self.regs[self.ADC] & 0x4)
+                self.adc = list(self.ADC_BANK1 if bank1 else self.ADC_BANK0)
+                self.regs[self.ISR] |= self.ADCDONE
+            if reg in (self.ADC, self.ADR):
+                self.regs[self.ADR] = self._adr()
+            if self.on_int:
+                self.on_int(self.int_level())
             reply = 0
         else:
             reply = self.regs[reg]
@@ -472,3 +503,144 @@ class DMA:
             self.addr += 4 * len(words)
         self.count += 1
         self.r.set16(0x18, (self.r.get16(0x18) & ~0x3) | 0x40)   # idle + done
+
+
+class Keypad:
+    """KPP keypad port at 0x2484E000 (Neptune LTE spec ch. 58), 16-bit registers:
+    +0 KPCR (KCO open-drain 15:8, KRE row enable 7:0), +2 KPSR (bit 0 KPKD key detect, w1c),
+    +4 KDDR (KCDD column direction 15:8, 1 = output), +6 KPDR (KCD columns 15:8, KRD rows 7:0).
+    Rows are pulled up: a row reads 0 only while a pressed key connects it to a column that
+    is driven low. `pressed` holds (column, row) pairs."""
+
+    def __init__(self):
+        self.kpcr = self.kpsr = self.kddr = 0
+        self.cols = 0xFF                        # column output latch (KPDR 15:8)
+        self.pressed = set()
+
+    def rows(self):
+        driven_low = self.kddr >> 8 & ~self.cols & 0xFF
+        r = 0xFF
+        for c, row in self.pressed:
+            if driven_low >> c & 1:
+                r &= ~(1 << row)
+        return r
+
+    def update(self):
+        if self.rows() & self.kpcr & 0xFF != self.kpcr & 0xFF:
+            self.kpsr |= 1
+
+    def read(self, off, size):
+        self.update()
+        v = {0: self.kpcr, 2: self.kpsr, 4: self.kddr,
+             6: (self.cols << 8) | self.rows()}.get(off & ~1, 0)
+        if size == 1:
+            return (v >> 8) & 0xFF if off % 2 == 0 else v & 0xFF
+        if size == 4:
+            nxt = {0: self.kpsr, 4: (self.cols << 8) | self.rows()}.get(off, 0)
+            return (v << 16) | nxt
+        return v
+
+    def write(self, off, size, value):
+        if size == 4:
+            self.write(off, 2, value >> 16)
+            self.write(off + 2, 2, value & 0xFFFF)
+            return
+        if size == 1:                           # byte access: merge into the 16-bit register
+            cur = self.read(off & ~1, 2)
+            value = (cur & 0x00FF) | (value << 8) if off % 2 == 0 else (cur & 0xFF00) | value
+            off &= ~1
+        if off == 0:
+            self.kpcr = value
+        elif off == 2:
+            self.kpsr &= ~value & 1
+        elif off == 4:
+            self.kddr = value & 0xFF00
+        elif off == 6:
+            self.cols = value >> 8
+
+
+class EdgePort:
+    """INT edge port at 0x2484C000 (external interrupt pins INT0-7; spec ch. 69), 16-bit:
+    +0 EPPAR (2 bits per pin: 00 level, 01 rising, 10 falling, 11 both edges), +2 EPDDR
+    (1 = read back EPDR instead of the pin), +4 EPDR, +6 EPFR (edge flags, write 1 to clear).
+    Level-sensitive pins request while low; edge flags are latched. Each pin has its own AITC
+    source (spec table 6-14). Pins: INT0 = HS_INT (headset / flip detect, pulled up),
+    INT1 = power IC interrupt (PCAP INT, driven by the PowerIC)."""
+
+    SOURCES = (60, 54, 39, 35, 30, 22, 13, 5)
+
+    def __init__(self, aitc=None, pins=0xFF):
+        self.eppar = self.epddr = self.epdr = self.epfr = 0
+        self.pins = pins
+        self.aitc = aitc
+
+    def set_pin(self, n, level):
+        old = self.pins >> n & 1
+        self.pins = (self.pins & ~(1 << n)) | (int(bool(level)) << n)
+        mode = self.eppar >> (2 * n) & 3
+        if old != level and (mode == 3 or (mode == 1 and level) or (mode == 2 and not level)):
+            self.epfr |= 1 << n
+        self.update()
+
+    def update(self):
+        if self.aitc is None:
+            return
+        for n, src in enumerate(self.SOURCES):
+            mode = self.eppar >> (2 * n) & 3
+            req = not (self.pins >> n & 1) if mode == 0 else bool(self.epfr >> n & 1)
+            self.aitc.set_line(src, req)
+
+    def read(self, off, size):
+        if off == 0:
+            return self.eppar
+        if off == 2:
+            return self.epddr
+        if off == 4:
+            return (self.epdr & self.epddr) | (self.pins & ~self.epddr & 0xFF)
+        if off == 6:
+            return self.epfr
+        return 0
+
+    def write(self, off, size, value):
+        if off == 0:
+            self.eppar = value & 0xFFFF
+        elif off == 2:
+            self.epddr = value & 0xFF
+        elif off == 4:
+            self.epdr = value & 0xFF
+        elif off == 6:
+            self.epfr &= ~value
+        self.update()
+
+
+class OneWire:
+    """One-wire master at 0x24856000 (spec ch. 66), 16-bit registers: +0 CONTROL (bit 7 RPP
+    reset + presence, bit 6 PST presence status, bit 5 WR0, bit 4 WR1/RD, bit 3 RDST),
+    +2 TIME_DIVIDER, +4 RESET (bit 0 soft reset). Operations complete instantly. `device`
+    is the slave (the battery's DS2502 EPROM) with reset() -> present and bit(value) -> bit
+    read back; None means no battery ID chip."""
+
+    def __init__(self, device=None):
+        self.device = device
+        self.ctrl = 0
+        self.div = 0
+
+    def read(self, off, size):
+        return {0: self.ctrl, 2: self.div}.get(off, 0)
+
+    def write(self, off, size, value):
+        if off == 2:
+            self.div = value
+        elif off == 4 and value & 1:
+            self.ctrl = 0
+        elif off == 0:
+            ctrl = self.ctrl & 0x48
+            if value & 0x80:
+                present = bool(self.device and self.device.reset())
+                ctrl = (ctrl & ~0x40) | (0x40 if present else 0)
+            if value & 0x20 and self.device:
+                self.device.bit(0)
+            if value & 0x10:
+                b = self.device.bit(1) if self.device else 1
+                ctrl = (ctrl & ~0x08) | (0x08 if b else 0)
+            self.ctrl = ctrl

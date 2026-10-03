@@ -80,7 +80,7 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True):
     m.attach(0x2484F000, 0x100, Regs(0x100))
     # Keypad port. Unmodelled it read as all rows low = every key held, which the boot-time
     # 'user initiated panic' key check (0x10AE52B0) took as a request and reset the display.
-    m.keypad = Keypad()
+    m.keypad = Keypad(m.aitc)
     m.attach(0x2484E000, 0x10, m.keypad)
     # External interrupt pins, idle high (pulled up). INT0 = HS_INT (flip / headset detect).
     m.edgeport = EdgePort(m.aitc)

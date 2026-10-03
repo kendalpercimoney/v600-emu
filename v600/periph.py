@@ -603,34 +603,71 @@ class Keypad:
     """KPP keypad port at 0x2484E000 (Neptune LTE spec ch. 58), 16-bit registers:
     +0 KPCR (KCO open-drain 15:8, KRE row enable 7:0), +2 KPSR (bit 0 KPKD key detect, w1c),
     +4 KDDR (KCDD column direction 15:8, 1 = output), +6 KPDR (KCD columns 15:8, KRD rows 7:0).
-    Rows are pulled up: a row reads 0 only while a pressed key connects it to a column that
-    is driven low. `pressed` holds (column, row) pairs."""
+    All lines are pulled-up inputs (the firmware never drives a column: KDDR = 0). On the
+    V600 a key pulls its row line low, and for most keys also one of the two column lines
+    (KBC0-1), so KPDR reads back exactly the SDK key code. `pressed` holds key names.
+    KPKD (any enabled row low after none was) raises AITC source 9."""
 
-    def __init__(self):
+    GROUND = None
+    SOURCE = 9
+
+    # Raw KPDR value per key (P2K-ELF-SDK sdk/hw_keypad.h, mask 0xFC00): a cleared column bit
+    # (8-9) names the column, both set = ground; the cleared row bit names the row.
+    CODES = {
+        '1': 0xFE7F, '2': 0xFEF7, '3': 0xFD7F, '4': 0xFDF7, '5': 0xFF7E, '6': 0xFFF6,
+        '7': 0xFFF3, '8': 0xFFF5, '9': 0xFFEB, '*': 0xFF7D, '0': 0xFEBF, '#': 0xFDBF,
+        'green': 0xFEDF, 'soft_right': 0xFFBB, 'soft_left': 0xFFBD, 'menu': 0xFF7B,
+        'vol_up': 0xFDDF, 'vol_down': 0xFFDE, 'smart': 0xFFDD, 'camera': 0xFFDB,
+        'right': 0xFFEE, 'left': 0xFDEF, 'k17': 0xFEEF, 'k19': 0xFFED, 'k29': 0xFFBE,
+        'k31': 0xFF3F, 'k32': 0xFF9F,
+    }
+
+    @classmethod
+    def position(cls, name):
+        code = cls.CODES[name]
+        cols = (code >> 8) & 3
+        col = cls.GROUND if cols == 3 else (0 if not cols & 1 else 1)
+        row = next(i for i in range(8) if not code >> i & 1)
+        return col, row
+
+    def __init__(self, aitc=None):
         self.kpcr = self.kpsr = self.kddr = 0
         self.cols = 0xFF                        # column output latch (KPDR 15:8)
         self.pressed = set()
+        self.aitc = aitc
+        self.was_down = False
+
+    def press(self, name, down=True):
+        (self.pressed.add if down else self.pressed.discard)(name)
+        self.update()
+
+    def lines(self):
+        """KPDR pin levels: AND of the pressed keys' codes; output columns show the latch."""
+        v = 0xFFFF
+        for name in self.pressed:
+            v &= self.CODES[name] | 0xFC00
+        out = self.kddr & 0xFF00
+        return (v & ~out) | ((self.cols << 8) & out)
 
     def rows(self):
-        driven_low = self.kddr >> 8 & ~self.cols & 0xFF
-        r = 0xFF
-        for c, row in self.pressed:
-            if driven_low >> c & 1:
-                r &= ~(1 << row)
-        return r
+        return self.lines() & 0xFF
 
     def update(self):
-        if self.rows() & self.kpcr & 0xFF != self.kpcr & 0xFF:
+        down = self.rows() & self.kpcr & 0xFF != self.kpcr & 0xFF
+        if down and not self.was_down:          # latched on a new press only
             self.kpsr |= 1
+        self.was_down = down
+        if self.aitc is not None:
+            self.aitc.set_line(self.SOURCE, bool(self.kpsr & 1))
 
     def read(self, off, size):
         self.update()
         v = {0: self.kpcr, 2: self.kpsr, 4: self.kddr,
-             6: (self.cols << 8) | self.rows()}.get(off & ~1, 0)
+             6: self.lines()}.get(off & ~1, 0)
         if size == 1:
             return (v >> 8) & 0xFF if off % 2 == 0 else v & 0xFF
         if size == 4:
-            nxt = {0: self.kpsr, 4: (self.cols << 8) | self.rows()}.get(off, 0)
+            nxt = {0: self.kpsr, 4: self.lines()}.get(off, 0)
             return (v << 16) | nxt
         return v
 

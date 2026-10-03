@@ -272,6 +272,7 @@ class ATIChip:
         self.cp_notes = {}
         self.blits = 0
         self.fills = 0
+        self.copies = 0
         self.writes = 0
         self.reads = 0
         self.trace = []                          # (kind, addr, value) for the first N accesses
@@ -310,13 +311,21 @@ class ATIChip:
         self._note('R', addr, v)
         return v
 
+    READ_ONLY = {0x10000}                        # CHIP_ID (the driver writes test patterns
+                                                 # there; the re-probe after a panel reset
+                                                 # must still see the real ID)
+
     def write32(self, addr, value):
         self.writes += 1
-        self.regs[addr & ~3] = value & 0xFFFFFFFF
+        if addr & ~3 not in self.READ_ONLY:
+            self.regs[addr & ~3] = value & 0xFFFFFFFF
         self._note('W', addr, value)
 
-    # Command ring (PM4) in chip memory; host writes wrap inside it.
+    # Command ring (PM4) in chip memory; host writes wrap inside it. 0x21C is the ring read
+    # pointer in dwords: the driver (0x10B88298) waits on it for free space and treats a
+    # pointer that never moves as a hung chip (-> display recovery).
     RING_BASE, RING_SIZE = 0x80000, 0x4000
+    RB_RPTR = 0x1021C
 
     def write_block(self, addr, words):
         """Host-port burst: registers if in 0x10000-0x1FFFF, otherwise chip memory. Words
@@ -336,6 +345,9 @@ class ATIChip:
         if ring:
             self.cp.extend(words)
             self.run_cp()
+            # read pointer (dwords): everything up to the unconsumed tail has been executed
+            end = (addr + 4 * len(words) - self.RING_BASE) % self.RING_SIZE
+            self.regs[self.RB_RPTR] = ((end - 4 * len(self.cp)) % self.RING_SIZE) // 4
 
     # -- command processor (PM4) -----------------------------------------------------------
     def reg(self, off):
@@ -397,6 +409,22 @@ class ATIChip:
                 a = (base + ((y + row) * pitch + x) * 2) & self.MEM_MASK
                 self.mem[a:a + 2 * w] = colour * w
             self.fills += 1
+        elif op == 0x1B and len(p) >= 3:                # screen-to-screen blit, rectangles of
+            sbase, spitch = self.reg(0x11AC), self.reg(0x11B0)   # (src x,y)(dst x,y)(w,h)
+            dbase, dpitch = self.reg(0x1004), self.reg(0x1008)   # SRC/DST_OFFSET, _PITCH (px)
+            for k in range(0, len(p) - 2, 3):
+                sx, sy = p[k] >> 16, p[k] & 0xFFFF
+                dx, dy = p[k + 1] >> 16, p[k + 1] & 0xFFFF
+                w, h = p[k + 2] >> 16, p[k + 2] & 0xFFFF
+                w = min(w, spitch - sx, dpitch - dx)        # clip to the surfaces' width
+                if w <= 0:
+                    continue
+                rows = [bytes(self.mem[(sbase + ((sy + r) * spitch + sx) * 2) & self.MEM_MASK:]
+                              [:2 * w]) for r in range(h)]
+                for r, row in enumerate(rows):
+                    a = (dbase + ((dy + r) * dpitch + dx) * 2) & self.MEM_MASK
+                    self.mem[a:a + len(row)] = row
+            self.copies += 1
         else:
             self.cp_note(f'type-3 opcode {op:#x} ({len(p)} words) not implemented')
 

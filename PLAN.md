@@ -64,9 +64,24 @@ format strings. This often tells us which subsystem is waiting on what.
 | M4 | Done enough: power-on reason, PDS, flash, DSP download + handshake, SIM absent |
 | M5 | **Done: the HELLOMOTO boot screen renders** from the ATI Imageon's frame buffer (`out/screen.png`) |
 
-Temporary shortcuts to remove later: boot battery check override (needs ADC + PMIC interrupt),
-SIM-absent overrides, PM4 opcode 0x1B unimplemented, time unit (1 ms per time() unit) not
-calibrated.
+Temporary shortcuts to remove later: boot battery check override (the ADC now works; retest
+without it), SIM-absent overrides, PM4 opcodes 0x15 (polyline?) unimplemented, battery EPROM
+parameters (0x00-0x5F) unknown.
+
+## Status (2026-10-04): startup animation
+
+The whole HELLOMOTO power-up animation plays (`boot_animation.png`, `tools/frames.py`). What it
+took, in order of discovery:
+
+1. Battery: PCAP ADC conversions + ADC-done interrupt (PCAP INT = edge port INT1, AITC 54);
+   battery ID chip on the one-wire bus (DS2502, family 0x89, Motorola EPROM signature).
+   Without these the phone powered itself off ~3 s after boot (cause 5, "invalid battery").
+2. ATI: CHIP_ID read-only (the driver writes a test pattern there and re-probes after a panel
+   reset), PM4 opcode 0x1B (screen-to-screen blit; back buffer 0x116B90 -> front 0x103D10),
+   ring read pointer at 0x21C (a pointer that never moves looks like a hung chip).
+
+Next: the idle screen. After the animation the display is re-initialised and stays black; the
+idle wallpaper was seen in the back buffer in an earlier run but is not presented yet.
 
 ## Known risks
 

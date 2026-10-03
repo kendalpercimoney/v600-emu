@@ -32,4 +32,9 @@ Downloaded copies live in `docs/` (git-ignored, not redistributed); text extract
 | File | Source | Use |
 |---|---|---|
 | `V600_TRIPLETS_G_0B.09.72R.smg` (13 MB) | firmware.center, EXL `Development/P2K/CGs/` | Raw main code group (base 0x10080000) of the newer V600 build the SDK targets. `tools/port_syms.py` ports the SDK's 72R symbols to our 38R build by masked byte matching: 306 of 339 code symbols (`out/symbols_ported.json`); all 150 that overlap the pattern matches agree |
-| `TRIPLETS_72R_R373_44R_REVERSE_ENGINEERING.zip` (87 MB) | firmware.center, EXL `Development/P2K/` | IDA 6 databases. `CG1_V300.bin.idb`: V300 code group, only ~320 non-automatic names (the SDK's). `gsm_flash_dev.elf.idb`: the ROKR E1 R373 build ELF from Motorola's internal build system; **not used** (leaked proprietary material) |
+| `TRIPLETS_72R_R373_44R_REVERSE_ENGINEERING.zip` (87 MB) | firmware.center, EXL `Development/P2K/` | IDA 6 databases. `CG1_V300.bin.idb`: V300 code group, only ~320 non-automatic names (the SDK's). `gsm_flash_dev.elf.idb`: the ROKR E1 R373 build ELF from Motorola's internal build system (112,606 real names, same platform). Used at the user's request: names extracted locally, never committed |
+
+Symbol pipeline (outputs in git-ignored `out/`; `v600/symbols.py` merges them):
+`tools/port_syms.py` (SDK 72R -> 38R, exact), `tools/port_e1.py` (E1 -> 38R, masked bytes),
+`tools/match_e1.py` (E1 -> 38R by structure: strings, constants, call graph; ~88% precise on
+the SDK-known overlap). About 7,200 named functions in total; treat E1-structural names as hints.

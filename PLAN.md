@@ -96,7 +96,16 @@ firmware's language is Russian) and after ~60 s of inactivity the animated bubbl
 - W100 register names (Linux w100fb.h) for status registers: RBBM_STATUS idle, GRAPHIC_CTRL
   clock-running bits.
 
-Next: keypad input and a live window.
+## Status (2026-10-04, evening): usable in a browser
+
+`tools/live.py` runs the phone in real time and serves it at http://localhost:8600 (screen,
+clickable keys, keyboard shortcuts). Keys: on the V600 a key pulls its row line and possibly
+one of two column lines low; KPDR reads back the SDK key code (`Keypad.CODES`). Idle
+fast-forward is capped at the wall clock in live mode so key presses land at the right time.
+Typing 112 on the Insert SIM screen gives the emergency-call screen.
+
+Next: the red/End key (power key, on the PCAP), the unlabelled matrix keys (k17-k32, probably
+up/down/centre), the outer CLI display, sound.
 
 ## Known risks
 

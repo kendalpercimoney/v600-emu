@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "v600-live",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["tools/live.py", "8600"],
+      "port": 8600
+    }
+  ]
+}

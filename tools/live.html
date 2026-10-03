@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V600 Emulator</title>
+<style>
+  :root { --bg: #ecebe7; --body: #2b2d31; --bezel: #111; --key: #3b3e44; --key-text: #f2f2f2;
+          --accent: #4a8f5c; --muted: #6b6b6b; --text: #1d1d1f; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #18191b; --body: #3a3c41; --bezel: #050505;
+          --key: #4b4e55; --muted: #9a9a9a; --text: #e8e8e8; } }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.4 -apple-system, system-ui, sans-serif; display: flex; justify-content: center; }
+  main { padding: 16px; display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
+  .phone { background: var(--body); border-radius: 28px; padding: 22px 18px 26px; width: 376px;
+           max-width: calc(100vw - 32px); box-sizing: border-box; box-shadow: 0 8px 30px #0004; }
+  .screen { background: var(--bezel); border-radius: 8px; padding: 6px; }
+  .screen img { display: block; width: 100%; image-rendering: pixelated; border-radius: 3px; }
+  .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; }
+  button { background: var(--key); color: var(--key-text); border: 0; border-radius: 10px;
+           padding: 12px 0; font: 600 15px system-ui; cursor: pointer; touch-action: none; }
+  button:active, button.down { filter: brightness(1.4); }
+  button.green { background: var(--accent); }
+  button.small { font-size: 12px; padding: 9px 0; }
+  .wide { grid-column: span 3; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  aside { max-width: 340px; color: var(--muted); }
+  aside h1 { font-size: 18px; color: var(--text); margin: 4px 0 8px; }
+  #log { font: 12px ui-monospace, monospace; white-space: pre-wrap; margin-top: 12px; }
+  kbd { border: 1px solid var(--muted); border-radius: 4px; padding: 0 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="phone">
+    <div class="screen"><img id="lcd" alt="V600 display" width="352" height="440"></div>
+    <div class="keys">
+      <button data-k="soft_left">Soft L</button><button data-k="menu">Menu</button><button data-k="soft_right">Soft R</button>
+      <button data-k="left">◀</button><button data-k="smart">Smart</button><button data-k="right">▶</button>
+      <button data-k="green" class="green">Send</button><button data-k="camera">Cam</button><button data-k="vol_up">Vol +</button>
+      <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+      <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+      <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+      <button data-k="*">*</button><button data-k="0">0</button><button data-k="#">#</button>
+      <div class="wide">
+        <button class="small" data-k="k17">k17</button><button class="small" data-k="k19">k19</button>
+        <button class="small" data-k="k29">k29</button><button class="small" data-k="k31">k31</button>
+        <button class="small" data-k="k32">k32</button>
+      </div>
+      <button data-k="vol_down" class="small" style="grid-column: span 3">Vol −</button>
+    </div>
+  </div>
+  <aside>
+    <h1>Motorola V600</h1>
+    <div>Firmware TRIPLETS_G_0B.09.38R, emulated. Keyboard: digits, <kbd>*</kbd> <kbd>#</kbd>,
+      <kbd>←</kbd> <kbd>→</kbd>, <kbd>Enter</kbd> send, <kbd>F1</kbd>/<kbd>F2</kbd> soft keys,
+      <kbd>M</kbd> menu, <kbd>+</kbd>/<kbd>−</kbd> volume. k17–k32 are matrix keys whose labels
+      are not known yet (probably up / down / centre).</div>
+    <div id="status"></div>
+    <div id="log"></div>
+  </aside>
+</main>
+<script>
+const lcd = document.getElementById('lcd');
+let loading = false;
+function refresh() {
+  if (loading) return;
+  loading = true;
+  const img = new Image();
+  img.onload = () => { lcd.src = img.src; loading = false; };
+  img.onerror = () => { loading = false; };
+  img.src = '/frame.png?t=' + Date.now();
+}
+setInterval(refresh, 120);
+function send(k, down) { fetch(`/key?name=${encodeURIComponent(k)}&down=${down ? 1 : 0}`); }
+for (const b of document.querySelectorAll('button[data-k]')) {
+  const k = b.dataset.k;
+  b.addEventListener('pointerdown', e => { b.setPointerCapture(e.pointerId); b.classList.add('down'); send(k, true); });
+  const up = () => { if (b.classList.contains('down')) { b.classList.remove('down'); send(k, false); } };
+  b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
+}
+const map = { Enter: 'green', F1: 'soft_left', F2: 'soft_right', m: 'menu', M: 'menu',
+              ArrowLeft: 'left', ArrowRight: 'right', '+': 'vol_up', '=': 'vol_up', '-': 'vol_down',
+              '*': '*', '#': '#' };
+for (let d = 0; d <= 9; d++) map[String(d)] = String(d);
+const held = new Set();
+addEventListener('keydown', e => { const k = map[e.key]; if (!k || held.has(k)) return;
+  held.add(k); e.preventDefault(); send(k, true); });
+addEventListener('keyup', e => { const k = map[e.key]; if (!k) return; held.delete(k); send(k, false); });
+setInterval(async () => {
+  try {
+    const s = await (await fetch('/status')).json();
+    document.getElementById('status').textContent =
+      `Phone time ${s.seconds}s` + (s.lag > 0.5 ? ` (running ${s.lag}s behind real time)` : '');
+    document.getElementById('log').textContent = s.log.join('\n');
+  } catch (e) {}
+}, 1000);
+</script>
+</body>
+</html>

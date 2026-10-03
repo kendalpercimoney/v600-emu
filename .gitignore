@@ -2,3 +2,4 @@ firmware/
 .venv/
 __pycache__/
 out/
+out.log

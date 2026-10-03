@@ -38,3 +38,13 @@ Symbol pipeline (outputs in git-ignored `out/`; `v600/symbols.py` merges them):
 `tools/port_syms.py` (SDK 72R -> 38R, exact), `tools/port_e1.py` (E1 -> 38R, masked bytes),
 `tools/match_e1.py` (E1 -> 38R by structure: strings, constants, call graph; ~88% precise on
 the SDK-known overlap). About 7,200 named functions in total; treat E1-structural names as hints.
+
+## Second search (2026-10-04)
+
+| Resource | Use |
+|---|---|
+| Linux `drivers/video/w100fb.h` (v3.10/v4.0; ATI Imageon W100), `docs/ref/` | Same register offsets as our W2250: 0x204 GEN_INT_STATUS, 0x410-0x430 LCD format / GRAPHIC_CTRL / GRAPHIC_OFFSET / PITCH / CRTC, 0x4B8 GPIO, 0x1004 DST_OFFSET, 0x106C DP_GUI_MASTER_CNTL, 0x107C DP_BRUSH_FRGD_CLR, 0x11AC SRC_OFFSET, 0x11BC/0x11C0 SC_TOP_LEFT/BOTTOM_RIGHT, 0x11C8 DP_CNTL, 0x12C4-0x12CC DP_DATATYPE/MIX/WRITE_MSK, 0x0140 RBBM_STATUS; plus bitfield structs. No CP ring registers (0x21C read pointer is inferred) |
+| Linux `radeon_reg.h`, `docs/ref/` | PM4 type-3 2D opcodes. The W2250 uses them with bit 7 clear: 0x15 POLYLINE, 0x1A PAINT_MULTI, 0x1B BITBLT_MULTI (0x19 = host data) |
+| P2K-ELF-SDK `sdk/hw_keypad.h` (/tmp/p2ksdk) | Raw KPDR value per key (mask 0xFC00): 2 driven columns (KBC0-1) + rows wired straight to ground, 8 rows. Red/End = power key on the PCAP. `sdk/ati.h`, `dal.h`, `dl_keypad.h`: AHI/DAL structures and logical key codes |
+| E1 names | Display-timeout / backlight app (`BLCHandleDisplayTimeout`, `map_displaytimeout`), battery ROM driver (`HAPI_BATTERY_ROM_*`), `Pm4WaitSpace` (IRAM) |
+| Searched, nothing found | Motorola battery EPROM layout, PCAP2 datasheet, any other P2K emulator |

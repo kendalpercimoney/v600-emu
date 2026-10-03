@@ -8,6 +8,7 @@ shows the display and sends key presses; keyboard: digits, * #, arrows left/righ
 Enter = green (send), F1 / F2 = left / right soft key, M = menu, +/- = volume.
 """
 import io
+import os
 import json
 import queue
 import sys
@@ -133,9 +134,24 @@ def handler(phone):
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8600
     phone = Phone()
+    server = None
+    for p in range(port, port + 10):        # bind first: a busy port must not leave the
+        try:                                # emulator thread running
+            server = ThreadingHTTPServer(('127.0.0.1', p), handler(phone))
+            break
+        except OSError:
+            print(f'port {p} is in use, trying {p + 1}', flush=True)
+    if server is None:
+        sys.exit('no free port found')
     threading.Thread(target=phone.run, daemon=True).start()
-    print(f'V600 running: http://localhost:{port}', flush=True)
-    ThreadingHTTPServer(('127.0.0.1', port), handler(phone)).serve_forever()
+    print(f'V600 running: http://localhost:{server.server_address[1]}  (Ctrl+C to quit)', flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+        os._exit(0)                         # skip interpreter teardown under a running CPU
 
 
 if __name__ == '__main__':

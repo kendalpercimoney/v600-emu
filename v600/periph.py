@@ -268,10 +268,14 @@ class ATIChip:
 
     # Status bits the hardware clears once an operation completes (operations are instant here).
     BUSY_BITS = {0x104D8: 0x2}
+    # Status bits that always read as set: 0x204 bit 11 is waited for after display updates
+    # (0x1091EE84; most likely vertical blank / frame done - there is no scan timing here).
+    READY_BITS = {0x10204: 0x800}
 
     def read32(self, addr):
         self.reads += 1
-        v = self.regs.get(addr & ~3, 0) & ~self.BUSY_BITS.get(addr & ~3, 0)
+        v = (self.regs.get(addr & ~3, 0) & ~self.BUSY_BITS.get(addr & ~3, 0)) \
+            | self.READY_BITS.get(addr & ~3, 0)
         self._note('R', addr, v)
         return v
 

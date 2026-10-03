@@ -4,8 +4,9 @@
 
 The emulator thread runs in short bursts and sleeps whenever virtual time gets ahead of the
 wall clock (idle periods are fast-forwarded by the machine, then waited out here). The page
-shows the display and sends key presses; keyboard: digits, * #, arrows left/right,
-Enter = green (send), F1 / F2 = left / right soft key, M = menu, +/- = volume.
+shows the display and sends key presses; keyboard: digits, * #, arrows, Space = centre (OK),
+Enter = green (send), Esc / Backspace = red (end; hold ~2 s to switch
+off), F1 / F2 = left / right soft key, M = menu, +/- = volume.
 """
 import io
 import os
@@ -80,7 +81,7 @@ class Phone:
         while True:
             while not self.keys.empty():
                 name, down = self.keys.get()
-                m.keypad.press(name, down)
+                board.press(m, name, down)
             ahead = (m.insns - self.virt0) / CPU_IPS - (time.monotonic() - self.wall0)
             if ahead > 0:
                 time.sleep(min(ahead, 0.02))
@@ -121,7 +122,7 @@ def handler(phone):
                 self.send(phone.frame(), 'image/png')
             elif u.path == '/key':
                 name = q.get('name', [''])[0]
-                if name in Keypad.CODES:
+                if name in Keypad.CODES or name == 'red':
                     phone.keys.put((name, q.get('down', ['1'])[0] == '1'))
                 self.send(b'ok', 'text/plain')
             elif u.path == '/status':

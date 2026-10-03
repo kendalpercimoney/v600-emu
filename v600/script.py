@@ -3,7 +3,7 @@
     s = Script(m); s.at(3.0, lambda m: m.keypad.press('1')); m.timers.append(s)
 
 It takes part in idle fast-forward, so the clock stops at each event."""
-from .board import CPU_IPS
+from .board import CPU_IPS, press
 
 
 class Script:
@@ -17,8 +17,8 @@ class Script:
         return self
 
     def key(self, seconds, name, hold=0.15):
-        self.at(seconds, lambda m: m.keypad.press(name))
-        return self.at(seconds + hold, lambda m: m.keypad.press(name, False))
+        self.at(seconds, lambda m: press(m, name))
+        return self.at(seconds + hold, lambda m: press(m, name, False))
 
     def update(self):
         while self.events and self.m.insns >= self.events[0][0]:

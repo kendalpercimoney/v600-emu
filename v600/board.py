@@ -43,6 +43,14 @@ def set_flip(m, open_):
     m.edgeport.set_pin(0, 1 if open_ else 0)
 
 
+def press(m, name, down=True):
+    """A key by name (periph.Keypad.CODES, or 'red': the power key on the PCAP)."""
+    if name == 'red':
+        m.pmic.power_key(down)
+    else:
+        m.keypad.press(name, down)
+
+
 def make_pds(m, barker=PDS_BARKER):
     m.uc.mem_write(PDS_BASE, b'PDS_2006' + barker.to_bytes(2, 'big'))
 

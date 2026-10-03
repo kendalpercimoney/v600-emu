@@ -40,7 +40,13 @@ class PowerIC:
     the bank selected by reg 9 (ADC) bit 2; ADA1 (reg 9 bits 6:4) / ADA2 (9:7) pick which
     results appear in ADR ADD1 (9:0) / ADD2 (19:10). Completion sets ISR bit 0 (ADCDONE)."""
 
-    ISR, MSR, ADC, ADR = 0, 1, 9, 10
+    ISR, MSR, PSTAT, ADC, ADR = 0, 1, 2, 9, 10
+    # Power key (the red End key): ISR bit 7 (ONOFF) latches each change. PSTAT holds the
+    # current line levels, active low: bit 7 = power key, bit 8 = the second on/off input
+    # (ONOFF2). Released = both set; the debouncer (0x1088EA3A, signals 0x21 / 0x54) reads
+    # bit 7 clear and bit 8 set as "power key held", which turns the phone off after ~2 s.
+    ONOFF = 1 << 7
+    PSTAT_IDLE = (1 << 7) | (1 << 8)
     ASC = 1 << 22
     ADCDONE = 1 << 0
     # 10-bit readings for bank 0: coin cell, battery, B+, charger port (none), battery
@@ -55,6 +61,16 @@ class PowerIC:
         self.seen = set()
         self.adc = list(self.ADC_BANK0)
         self.on_int = None              # called with the INT pin level (ISR & ~MSR != 0)
+        self.sense = self.PSTAT_IDLE    # PSTAT: current level of the interrupt sources
+
+    def power_key(self, down):
+        """The red key: PSTAT sense bit follows the key, ISR latches each change."""
+        old = self.sense
+        self.sense = (self.sense & ~self.ONOFF) if down else (self.sense | self.ONOFF)
+        if self.sense != old:
+            self.regs[self.ISR] |= self.ONOFF
+            if self.on_int:
+                self.on_int(self.int_level())
 
     def int_level(self):
         return bool(self.regs[self.ISR] & ~self.regs[self.MSR] & 0x1FFFFFF)
@@ -89,7 +105,7 @@ class PowerIC:
                 self.on_int(self.int_level())
             reply = 0
         else:
-            reply = self.regs[reg]
+            reply = self.regs[reg] | (self.sense if reg == self.PSTAT else 0)
         key = (write, reg)
         if key not in self.seen:
             self.seen.add(key)
@@ -613,13 +629,17 @@ class Keypad:
 
     # Raw KPDR value per key (P2K-ELF-SDK sdk/hw_keypad.h, mask 0xFC00): a cleared column bit
     # (8-9) names the column, both set = ground; the cleared row bit names the row.
+    # Names follow the firmware: the scanner matches these codes against its table
+    # (RAM 0x12330738, 5 groups x 5 x {code, index}) and the index goes through a per-product
+    # key map (e.g. 0x117F0ABC) to the logical KEY_ codes of the SDK: 0xFEEF -> KEY_UP,
+    # 0xFFED -> KEY_DOWN, 0xFFBE -> KEY_JOY_OK, 0xFFDB -> KEY_VOICE. The red key is not in
+    # the matrix: it is the power key on the PCAP (PowerIC.power_key).
     CODES = {
         '1': 0xFE7F, '2': 0xFEF7, '3': 0xFD7F, '4': 0xFDF7, '5': 0xFF7E, '6': 0xFFF6,
         '7': 0xFFF3, '8': 0xFFF5, '9': 0xFFEB, '*': 0xFF7D, '0': 0xFEBF, '#': 0xFDBF,
         'green': 0xFEDF, 'soft_right': 0xFFBB, 'soft_left': 0xFFBD, 'menu': 0xFF7B,
-        'vol_up': 0xFDDF, 'vol_down': 0xFFDE, 'smart': 0xFFDD, 'camera': 0xFFDB,
-        'right': 0xFFEE, 'left': 0xFDEF, 'k17': 0xFEEF, 'k19': 0xFFED, 'k29': 0xFFBE,
-        'k31': 0xFF3F, 'k32': 0xFF9F,
+        'vol_up': 0xFDDF, 'vol_down': 0xFFDE, 'smart': 0xFFDD, 'voice': 0xFFDB,
+        'right': 0xFFEE, 'left': 0xFDEF, 'up': 0xFEEF, 'down': 0xFFED, 'ok': 0xFFBE,
     }
 
     @classmethod

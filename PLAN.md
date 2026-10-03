@@ -104,8 +104,17 @@ one of two column lines low; KPDR reads back the SDK key code (`Keypad.CODES`). 
 fast-forward is capped at the wall clock in live mode so key presses land at the right time.
 Typing 112 on the Insert SIM screen gives the emergency-call screen.
 
-Next: the red/End key (power key, on the PCAP), the unlabelled matrix keys (k17-k32, probably
-up/down/centre), the outer CLI display, sound.
+Next: the outer CLI display, sound.
+
+## Status (2026-10-05): all keys
+
+- Navigation: the matrix codes the SDK leaves unnamed are, from the firmware's own key map,
+  0xFEEF = up, 0xFFED = down, 0xFFBE = centre (OK); 0xFFDB is the Voice key, not Camera.
+  0xFF3F / 0xFF9F are not keys (two rows at once).
+- Red/End is the PCAP power key: ISR bit 7 on each change, PSTAT bit 7 = level (active low,
+  bit 8 = ONOFF2 must read high). Short press ends/clears; held ~2 s switches the phone off.
+- Without a SIM the Menu and soft keys only show "emergency calls only"
+  ("Выз. служб спасения"): the menus need a SIM card. Next: emulate one.
 
 ## Known risks
 

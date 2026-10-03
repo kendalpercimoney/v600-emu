@@ -168,10 +168,10 @@ class DSPHostPort:
 
 
 class FreeRunCounter:
-    """64-bit free-running counter at 0x2484A000: +0 high word, +4 low word.
+    """RTR real-time reference at 0x2484A000: +0 MSB (seconds), +4 LSB (bits 31:17 = 15-bit
+    fraction of a second). Effectively a 32.768 kHz count in bits 63:17.
 
-    Driven by the machine's virtual clock (instructions executed). Assumes a 13 MHz counter
-    and a 52 MHz CPU at ~1 instruction per cycle (to be calibrated)."""
+    Driven by the machine's virtual clock (instructions executed, 52 MHz assumed)."""
 
     def __init__(self, machine, ticks_per_insn=0.25):
         self.m = machine

@@ -3,3 +3,4 @@ firmware/
 __pycache__/
 out/
 out.log
+docs/

@@ -26,3 +26,10 @@ Downloaded copies live in `docs/` (git-ignored, not redistributed); text extract
   (ADD1 9:0, ADD2 19:10); ISR bit 0 ADC done, 7 ONOFF, 8 ONOFF2, 5 alarm; regs 14-17 RTC.
 - **V600 board**: graphics accelerator ("GA", ATI) on SPI (GA SPI CS/MOSI/MISO + GA INT); PCAP U900;
   4 MB RAM; Neptune U800.
+
+## Reverse-engineering downloads (docs/re/)
+
+| File | Source | Use |
+|---|---|---|
+| `V600_TRIPLETS_G_0B.09.72R.smg` (13 MB) | firmware.center, EXL `Development/P2K/CGs/` | Raw main code group (base 0x10080000) of the newer V600 build the SDK targets. `tools/port_syms.py` ports the SDK's 72R symbols to our 38R build by masked byte matching: 306 of 339 code symbols (`out/symbols_ported.json`); all 150 that overlap the pattern matches agree |
+| `TRIPLETS_72R_R373_44R_REVERSE_ENGINEERING.zip` (87 MB) | firmware.center, EXL `Development/P2K/` | IDA 6 databases. `CG1_V300.bin.idb`: V300 code group, only ~320 non-automatic names (the SDK's). `gsm_flash_dev.elf.idb`: the ROKR E1 R373 build ELF from Motorola's internal build system; **not used** (leaked proprietary material) |

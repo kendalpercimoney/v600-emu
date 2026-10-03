@@ -137,3 +137,18 @@ Next: the outer CLI display, sound.
 - Every discovery goes into `HARDWARE.md` (register, address, meaning, evidence).
 - Reproducible runs: `python run.py` from a clean checkout boots as far as we've got.
 - Commit at each milestone.
+
+## Status (2026-10-05, later): dialogs, icons, wallpaper
+
+Compared with a photo of a real V600 on the Insert SIM screen, the wallpaper, the dialog
+icon and the translucency were missing:
+- Icons are drawn by register-triggered blits: writing DST_WIDTH_HEIGHT (0x1198) copies
+  SRC (0x1190 = x << 16 | y) to DST (0x1194), as on Radeon. Masked blits (DP_MIX ROP pair
+  AA/CC) treat black as transparent.
+- Dialogs are drawn into a layer surface (0x116B90) and copied over the screen, which holds
+  the wallpaper. The layer keeps a per-pixel alpha: plain clears empty it, alpha ops
+  (dp_op, GLOBAL_ALPHA 8 or 11 of 16) veil it, DP_MIX bits 26-27 make source pixels
+  (images, text, icons) opaque and leave brush pixels' alpha alone. The final copy
+  (bits 26-27) blends the layer over the last plain full copy (the wallpaper).
+- Remaining colour differences (lavender header and text versus dark blue and black in the
+  photo) are probably a different skin on that phone's firmware.

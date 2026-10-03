@@ -18,11 +18,15 @@ for f in ('out/symbols_from_pts.json', 'out/symbols_ported.json', 'out/symbols_e
         pass
 m = Machine(log=lambda *a: None); m.verbose_mmio = False
 board.build(m); m.reset(); fwlog.install(m, sink=lambda s: None)
+import os
+START = int(os.environ.get('START', 0))       # only record calls after this many insns
 calls = {}
 events = []
 
 def tracer(name):
     def f(m):
+        if m.insns < START:
+            return
         c = calls[name] = calls.get(name, 0) + 1
         if c <= 3 and len(events) < 5000:
             events.append(f'{m.insns:>14,}  {name}({m.r(0):#x}, {m.r(1):#x}, {m.r(2):#x}, {m.r(3):#x})'

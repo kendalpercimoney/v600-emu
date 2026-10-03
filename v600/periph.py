@@ -273,6 +273,8 @@ class ATIChip:
         self.blits = 0
         self.fills = 0
         self.copies = 0
+        self.glyphs = 0
+        self.lines = 0
         self.writes = 0
         self.reads = 0
         self.trace = []                          # (kind, addr, value) for the first N accesses
@@ -298,16 +300,28 @@ class ATIChip:
                          (a & 31) * 255 // 31]).astype(np.uint8)
         return Image.fromarray(rgb)
 
-    # Status bits the hardware clears once an operation completes (operations are instant here).
+    # Register names from the Imageon W100 (Linux w100fb.h), which shares this register map.
+    # Operations are instant here, so busy/pending bits always read as done:
+    #   0x4D8 DISP_DB_BUF_CNTL bit 1: double-buffered display update pending (self-clearing)
     BUSY_BITS = {0x104D8: 0x2}
-    # Status bits that always read as set: 0x204 bit 11 is waited for after display updates
-    # (0x1091EE84; most likely vertical blank / frame done - there is no scan timing here).
+    #   0x204 GEN_INT_STATUS bit 11: waited for after display updates (0x1091EE84)
     READY_BITS = {0x10204: 0x800}
+    #   0x140 RBBM_STATUS: command FIFO entries free (bits 6:0), nothing busy, GUI idle
+    RBBM_STATUS, RBBM_IDLE = 0x10140, 0x40
+    #   0x414 GRAPHIC_CTRL: pclk_running (25) / sclk_running (26) follow lcd_pclk_on (23) /
+    #   lcd_sclk_on (24)
+    GRAPHIC_CTRL = 0x10414
 
     def read32(self, addr):
         self.reads += 1
-        v = (self.regs.get(addr & ~3, 0) & ~self.BUSY_BITS.get(addr & ~3, 0)) \
-            | self.READY_BITS.get(addr & ~3, 0)
+        a = addr & ~3
+        if a == self.RBBM_STATUS:
+            v = self.RBBM_IDLE
+        elif a == self.GRAPHIC_CTRL:
+            v = self.regs.get(a, 0)
+            v = (v & ~(3 << 25)) | (((v >> 23) & 3) << 25)
+        else:
+            v = (self.regs.get(a, 0) & ~self.BUSY_BITS.get(a, 0)) | self.READY_BITS.get(a, 0)
         self._note('R', addr, v)
         return v
 
@@ -319,13 +333,19 @@ class ATIChip:
         self.writes += 1
         if addr & ~3 not in self.READ_ONLY:
             self.regs[addr & ~3] = value & 0xFFFFFFFF
+        if addr & ~3 == self.RB_WPTR:            # ring (re)start: read pointer follows
+            self.regs[self.RB_RPTR] = value & 0xFFFFFFFF
+            self.cp.clear()
         self._note('W', addr, value)
 
-    # Command ring (PM4) in chip memory; host writes wrap inside it. 0x21C is the ring read
-    # pointer in dwords: the driver (0x10B88298) waits on it for free space and treats a
-    # pointer that never moves as a hung chip (-> display recovery).
+    # Command ring (PM4) in chip memory; host writes wrap inside it. 0x21C / 0x220 are the
+    # ring read / write pointers in dwords. The driver waits on the read pointer for free
+    # space (0x10B88298) and for idle (0x10B87A60: read == write pointer == its own count);
+    # a wait that never ends is flagged by the task-progress watchdog (0x10AE56C4, slot 6)
+    # and the display is torn down and reinitialised.
     RING_BASE, RING_SIZE = 0x80000, 0x4000
     RB_RPTR = 0x1021C
+    RB_WPTR = 0x10220     # advanced by ring writes; the driver writes it on ring (re)start
 
     def write_block(self, addr, words):
         """Host-port burst: registers if in 0x10000-0x1FFFF, otherwise chip memory. Words
@@ -345,8 +365,10 @@ class ATIChip:
         if ring:
             self.cp.extend(words)
             self.run_cp()
-            # read pointer (dwords): everything up to the unconsumed tail has been executed
+            # write pointer (dwords) follows the data pushed into the ring; read pointer:
+            # everything up to the unconsumed tail has been executed
             end = (addr + 4 * len(words) - self.RING_BASE) % self.RING_SIZE
+            self.regs[self.RB_WPTR] = end // 4
             self.regs[self.RB_RPTR] = ((end - 4 * len(self.cp)) % self.RING_SIZE) // 4
 
     # -- command processor (PM4) -----------------------------------------------------------
@@ -389,12 +411,28 @@ class ATIChip:
             self.log(f'  ati cp: {text}')
         self.cp_notes[text] = self.cp_notes.get(text, 0) + 1
 
+    # Monochrome host-data colours (text): candidates from the register dump at glyph time.
+    MONO_FRGD, MONO_BKGD = 0x107C, 0x1078   # DP_BRUSH_FRGD_CLR / _BKGD_CLR
+
     def packet3(self, op, p):
         if op == 0x19 and len(p) >= 2:                  # host-data blit into DST surface
             y, x = p[0] >> 16, p[0] & 0xFFFF
             h, w = p[1] >> 16, p[1] & 0xFFFF
             base, pitch = self.reg(0x1004), self.reg(0x1008)     # DST_OFFSET, DST_PITCH (px)
             px = b''.join(v.to_bytes(4, 'little') for v in p[2:])
+            src_type = (self.reg(0x106C) >> 12) & 7               # GMC_SRC_DATATYPE
+            if src_type in (0, 1):                                # monochrome: 1 bit per pixel
+                fg = (self.reg(self.MONO_FRGD) & 0xFFFF).to_bytes(2, 'little')
+                bg = (self.reg(self.MONO_BKGD) & 0xFFFF).to_bytes(2, 'little')
+                for i in range(w * h):
+                    byte = px[i >> 3] if (i >> 3) < len(px) else 0
+                    on = byte >> (7 - (i & 7)) & 1                # leftmost pixel = bit 7
+                    if on or src_type == 0:                       # type 1: background left alone
+                        r, c = divmod(i, w)
+                        a = (base + ((y + r) * pitch + x + c) * 2) & self.MEM_MASK
+                        self.mem[a:a + 2] = fg if on else bg
+                self.glyphs += 1
+                return
             for row in range(h):
                 src = px[row * w * 2:(row + 1) * w * 2]
                 a = (base + ((y + row) * pitch + x) * 2) & self.MEM_MASK
@@ -409,6 +447,16 @@ class ATIChip:
                 a = (base + ((y + row) * pitch + x) * 2) & self.MEM_MASK
                 self.mem[a:a + 2 * w] = colour * w
             self.fills += 1
+        elif op == 0x15 and len(p) >= 2:                # POLYLINE: points (y << 16 | x)
+            base, pitch = self.reg(0x1004), self.reg(0x1008)
+            colour = (self.reg(0x107C) & 0xFFFF).to_bytes(2, 'little')   # DP_BRUSH_FRGD_CLR
+            pts = [(w & 0xFFFF, w >> 16) for w in p]
+            for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+                for x, y in self._line(x0, y0, x1, y1):
+                    if 0 <= x < pitch:
+                        a = (base + (y * pitch + x) * 2) & self.MEM_MASK
+                        self.mem[a:a + 2] = colour
+            self.lines += 1
         elif op == 0x1B and len(p) >= 3:                # screen-to-screen blit, rectangles of
             sbase, spitch = self.reg(0x11AC), self.reg(0x11B0)   # (src x,y)(dst x,y)(w,h)
             dbase, dpitch = self.reg(0x1004), self.reg(0x1008)   # SRC/DST_OFFSET, _PITCH (px)
@@ -427,6 +475,24 @@ class ATIChip:
             self.copies += 1
         else:
             self.cp_note(f'type-3 opcode {op:#x} ({len(p)} words) not implemented')
+
+    @staticmethod
+    def _line(x0, y0, x1, y1):
+        """Bresenham, both end points included."""
+        dx, dy = abs(x1 - x0), -abs(y1 - y0)
+        sx, sy = (1 if x0 < x1 else -1), (1 if y0 < y1 else -1)
+        err = dx + dy
+        while True:
+            yield x0, y0
+            if x0 == x1 and y0 == y1:
+                return
+            e2 = 2 * err
+            if e2 >= dy:
+                err += dy
+                x0 += sx
+            if e2 <= dx:
+                err += dx
+                y0 += sy
 
     def read8(self, addr):
         if addr < 0x10000:

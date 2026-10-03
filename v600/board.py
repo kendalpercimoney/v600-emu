@@ -37,11 +37,17 @@ TIME_UNIT_US = 1e6 / 8192
 IDLE_LOW_POWER = 0x03FF0692
 
 
+def set_flip(m, open_):
+    """Flip sensor on INT0 (HS_INT, pulled up): high = open (main display), low = closed
+    (the UI moves to the outer CLI display)."""
+    m.edgeport.set_pin(0, 1 if open_ else 0)
+
+
 def make_pds(m, barker=PDS_BARKER):
     m.uc.mem_write(PDS_BASE, b'PDS_2006' + barker.to_bytes(2, 'big'))
 
 
-def build(m, pds_barker=PDS_BARKER):
+def build(m, pds_barker=PDS_BARKER, flip_open=True):
     bootrom.install(m)
     m.dspmsg = DSPMessages(m)
     m.flash = Flash(m)
@@ -78,6 +84,7 @@ def build(m, pds_barker=PDS_BARKER):
     m.attach(0x2484E000, 0x10, m.keypad)
     # External interrupt pins, idle high (pulled up). INT0 = HS_INT (flip / headset detect).
     m.edgeport = EdgePort(m.aitc)
+    set_flip(m, flip_open)
     m.pmic.on_int = lambda level: m.edgeport.set_pin(1, level)
     m.edgeport.set_pin(1, m.pmic.int_level())
     m.attach(0x2484C000, 0x8, m.edgeport)

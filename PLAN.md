@@ -80,8 +80,23 @@ took, in order of discovery:
    reset), PM4 opcode 0x1B (screen-to-screen blit; back buffer 0x116B90 -> front 0x103D10),
    ring read pointer at 0x21C (a pointer that never moves looks like a hung chip).
 
-Next: the idle screen. After the animation the display is re-initialised and stays black; the
-idle wallpaper was seen in the back buffer in an earlier run but is not presented yet.
+## Status (2026-10-04, later): standby screen
+
+After the animation the phone shows the "Insert SIM card" notice (`insert_sim.png`, the
+firmware's language is Russian) and after ~60 s of inactivity the animated bubbles screensaver
+(`screensaver.png`). What it took:
+
+- Ring pointers: 0x220 (write pointer) advances with ring data, 0x21C (read pointer) with
+  execution; a write to 0x220 restarts the ring. The driver's idle wait compares both with its
+  own count; a wait that never ends trips a task-progress watchdog (0x10AE56C4) which tears the
+  display down every ~0.6 s.
+- Flip sensor on INT0: high = open. Low sends the UI to the outer (CLI) display.
+- PM4: POLYLINE (0x15) and monochrome host data (text, GMC_SRC_DATATYPE 0/1, colour from
+  DP_BRUSH_FRGD_CLR, leftmost pixel = bit 7).
+- W100 register names (Linux w100fb.h) for status registers: RBBM_STATUS idle, GRAPHIC_CTRL
+  clock-running bits.
+
+Next: keypad input and a live window.
 
 ## Known risks
 

@@ -161,8 +161,12 @@ class Machine:
     def reset(self):
         """CPU state the (missing) bootloader leaves: SVC mode, IRQ/FIQ off, a stack in IRAM."""
         uc = self.uc
-        stacks = {0x11: 0x03FFFF00, 0x12: 0x03FFFE00, 0x17: 0x03FFFD00, 0x1B: 0x03FFFC00,
-                  0x1F: 0x03FFF000, 0x13: 0x03FFFF80}
+        # The firmware never sets the exception-mode stacks. SVC keeps the top of IRAM: it
+        # becomes the OS's interrupt/idle context and reaches below 0x03FFFE60. The others
+        # sit in 0x03FFB85C-0x03FFEEEB, which nothing else touches; an FIQ stack inside the
+        # SVC area corrupted that context once the SIM (FIQ source 51) was active.
+        stacks = {0x11: 0x03FFE800, 0x12: 0x03FFE000, 0x17: 0x03FFD000, 0x1B: 0x03FFC800,
+                  0x1F: 0x03FFC000, 0x13: 0x03FFFF80}
         for mode, sp in stacks.items():
             uc.reg_write(UC_ARM_REG_CPSR, CPSR_E | 0xC0 | mode)
             uc.reg_write(UC_ARM_REG_SP, sp)

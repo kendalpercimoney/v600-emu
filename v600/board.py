@@ -1,6 +1,7 @@
 """Wires the peripheral models onto a Machine."""
 from . import bootrom, overrides
 from .dsp import DSPMessages
+from .sim import SIMCard, SIMInterface
 from .ds2502 import DS2502
 from .flash import Flash
 from .irq import AITC, OSTimer
@@ -55,7 +56,7 @@ def make_pds(m, barker=PDS_BARKER):
     m.uc.mem_write(PDS_BASE, b'PDS_2006' + barker.to_bytes(2, 'big'))
 
 
-def build(m, pds_barker=PDS_BARKER, flip_open=True):
+def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     bootrom.install(m)
     m.dspmsg = DSPMessages(m)
     m.flash = Flash(m)
@@ -83,9 +84,12 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True):
     m.hook(IDLE_LOW_POWER, lambda m: setattr(m, 'idle_hint', True))
     # Unidentified unit at 0x24845000: +0x18 data, +0x10 bit 8 = start/busy (self-clearing).
     m.attach(0x24845000, 0x1000, Regs(0x1000, selfclear={0x10: 0x100}))
-    # SIM card interface (SCIM) at 0x2484F000 (driver strings p/SCIM_EXT_PORT, p/dl_sim_mgr).
-    # No card is fitted: card reset/deactivate are overridden (overrides.py).
-    m.attach(0x2484F000, 0x100, Regs(0x100))
+    # SIM card interface (SCIM) at 0x2484F000 (driver strings p/SCIM_EXT_PORT, p/dl_sim_mgr)
+    # with a virtual SIM card in port 0 (sim.py). Without a card (sim_card=False) the card
+    # reset/deactivate functions are overridden instead (overrides.py).
+    m.sim = SIMInterface(m, SIMCard() if sim_card else None, ips=CPU_IPS)
+    m.attach(0x2484F000, 0x100, m.sim)
+    m.timers.append(m.sim)
     # Keypad port. Unmodelled it read as all rows low = every key held, which the boot-time
     # 'user initiated panic' key check (0x10AE52B0) took as a request and reset the display.
     m.keypad = Keypad(m.aitc)
@@ -108,5 +112,5 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True):
     m.onewire = OneWire(m.battery_id)
     m.attach(0x24856000, 0x8, m.onewire)
     make_pds(m, pds_barker)
-    overrides.install(m)
+    overrides.install(m, sim_card=sim_card)
     return m

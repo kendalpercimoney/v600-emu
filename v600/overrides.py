@@ -43,8 +43,9 @@ def sim_deactivate(m):
     return_from(m, 0)
 
 
-def install(m):
-    m.hook(0x103A0624, sim_reset_no_answer)
-    m.hook(0x103A08C8, sim_deactivate)
+def install(m, sim_card=True):
+    if not sim_card:
+        m.hook(0x103A0624, sim_reset_no_answer)
+        m.hook(0x103A08C8, sim_deactivate)
     m.hook(0x10647372, read_secure_item)
     m.hook(0x10AE4784, skip_boot_battery_check)

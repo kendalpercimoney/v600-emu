@@ -78,7 +78,7 @@ class Phone:
     def frame(self):
         """PNG of the visible screen, re-encoded only when the ATI drew something."""
         ati = self.m.ati
-        fid = (ati.blits, ati.copies, ati.fills, ati.lines, ati.glyphs, ati.reg(0x418))
+        fid = (ati.draws, ati.reg(0x418))
         if fid != self.frame_id:
             img = ati.screen().resize((352, 440), Image.NEAREST)
             buf = io.BytesIO()

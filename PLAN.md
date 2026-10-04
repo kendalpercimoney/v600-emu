@@ -184,3 +184,19 @@ in a short session). `Flash.save/load` keep the 128 KB blocks that differ from t
 firmware image; live mode restores them from state/flash.bin at start, saves every 5 s
 when idle and on exit (`--fresh` ignores the file). Verified: answering No to "Continue to
 show Personalise Dialogue on power up?" survives a restart.
+
+## Status (2026-10-06, evening): graphics chip from the Zaurus driver
+
+`v600/ati.py` now holds the whole Imageon model (host access, command processor, 2D
+engine, display), using register names and fields from the Zaurus kdrive imageon driver
+(OpenEmbedded `kdrive-imageon.patch`, docs/ref/imageon_regs.h, imageon_const.h):
+- text colours are DP_SRC_FRGD_CLR / DP_SRC_BKGD_CLR (0x1240 / 0x1244), not the brush:
+  dialog, title, soft-key and calculator text is now black and readable;
+- SRC_X_Y / DST_X_Y (0x1190 / 0x1194) confirmed for register-triggered blits;
+- alpha fills are E2 opcode 4 (DST_SADDBLEND_SRC2) by GLOBAL_ALPHA; the destination weight
+  is taken as 1 - alpha (read literally the UI's alpha-11 layers turn white);
+- a white fill with DP_MIX bits 26-27 re-veils what an earlier alpha fill covered, which
+  keeps menu rows translucent after the highlight leaves them.
+Still inferred: icon transparency (corner pixel), the meaning of DP_MIX bits 26-27.
+The white start-up screen is the "Searching for Network" dialog: the idle screen paints the
+wallpaper only once it closes, which takes ~60 s without a network (real phones: seconds).

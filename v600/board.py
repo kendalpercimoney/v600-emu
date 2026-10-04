@@ -5,7 +5,8 @@ from .sim import SIMCard, SIMInterface
 from .ds2502 import DS2502
 from .flash import Flash
 from .irq import AITC, OSTimer
-from .periph import (ATIChip, ATISerialPort, DMA, DSPHostPort, FreeRunCounter, EdgePort, Keypad, OneWire,
+from .ati import ATIChip, ATISerialPort
+from .periph import (DMA, DSPHostPort, FreeRunCounter, EdgePort, Keypad, OneWire,
                      PowerIC, QSPI, Regs)
 
 # Power-IC register 23 is VENDOR_REV (PCAP2, Linux ezx-pcap.h), read as signal 0xE7 by the

@@ -20,4 +20,4 @@ def packet3(op, p):
 
 m.ati.packet3 = packet3
 r = m.run(int(sys.argv[1]) if len(sys.argv) > 1 else 600_000_000)
-print(r, m.ati.blits, m.ati.fills)
+print(r, m.ati.draws)

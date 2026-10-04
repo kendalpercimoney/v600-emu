@@ -21,7 +21,7 @@ if __name__ == '__main__':
     m.log = print
     m.run(n)
     mem = bytes(m.ati.mem)
-    print('blits', m.ati.blits, 'frame base', hex(m.ati.reg(0x418)))
+    print('blits', m.ati.draws, 'frame base', hex(m.ati.reg(0x418)))
     for base in (m.ati.reg(0x418) or 0x103D10,):
         for little in (False, True):
             img = rgb565(mem[base:base + W * H * 2], little)

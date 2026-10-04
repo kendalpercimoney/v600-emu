@@ -163,3 +163,16 @@ icon and the translucency were missing:
   stack overlapped the OS's SVC context; moved to 0x03FFB85C-0x03FFEEEB, which is unused.
 - Result: English UI (no language on the SIM), "Personalise your phone?" on first boot,
   idle screen with No Service / "V600 EMU", working menus. Some titles do not render yet.
+
+## Status (2026-10-06): image fixes
+
+- DMA transfers of an odd number of halfwords lost their last pixel (and shifted the rows
+  sent after it): image rows of odd width looked jagged. Tails are now delivered.
+- CIF_CNTL (0x18) swap_fbuf: icons are uploaded with 16-bit halves swapped.
+- Scissor clipping (SC_TOP_LEFT / SC_BOTTOM_RIGHT with GMC dst clipping): scrolling dialog
+  text no longer overprints.
+- Compositing: the layer surface holds the wallpaper itself (patches are re-uploaded when a
+  menu cell is redrawn), and alpha fills blend in place. The earlier per-pixel alpha model
+  is gone; it left stale highlights and white blocks.
+- Open: dialog text drawn white on a white box during start-up (colour source unknown),
+  soft-key labels have low contrast, icon transparency is inferred from the corner pixel.

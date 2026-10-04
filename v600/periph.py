@@ -283,8 +283,6 @@ class ATIChip:
         self.iface = {4: 0x01, 5: 0x11}          # interface ID checked by 0x10920A4C
         self.regs = {0x10000: chip_id}           # CHIP_ID
         self.mem = bytearray(self.MEM_MASK + 1)  # internal / external video memory
-        self.alpha = bytearray((self.MEM_MASK + 1) // 2)    # per-pixel alpha, see _mode
-        self.backdrop = {}                       # row address -> pixels of the last plain copy
         self.mem_writes = 0
         self.cp = []                             # pending PM4 words
         self.cp_notes = {}
@@ -392,6 +390,20 @@ class ATIChip:
             self.regs[self.RB_WPTR] = end // 4
             self.regs[self.RB_RPTR] = ((end - 4 * len(self.cp)) % self.RING_SIZE) // 4
 
+    def write_tail(self, addr, data):
+        """A host write shorter than a word (1-3 bytes) into chip memory: the bytes land
+        where they would have in a full word written at addr with the current swap mode."""
+        if 0x10000 <= addr < 0x20000:
+            return
+        swap = (self.reg(0x18) >> 2) & 3
+        marks = int.from_bytes(bytes([1, 2, 3, 4]), 'big')
+        lanes = self._swap(marks, swap).to_bytes(4, 'little')      # chip byte k <- source
+        word = data.ljust(4, b'\0')
+        for k, src in enumerate(lanes):
+            if src - 1 < len(data):
+                self.mem[(addr + k) & self.MEM_MASK] = word[src - 1]
+        self.mem_writes += 1
+
     # CIF_CNTL (0x18) swap_fbuf_1 (bits 3:2): byte lane swap for host writes to chip memory.
     # Icons are uploaded with 3 (pixel order within each word swapped, 16-bit halves) and
     # the field is set back to 0 afterwards; without it every pixel pair was mirrored.
@@ -446,80 +458,76 @@ class ATIChip:
         self.cp_notes[text] = self.cp_notes.get(text, 0) + 1
 
     # -- 2D engine -----------------------------------------------------------------------
-    # Pixel modes. The UI draws dialogs into a layer surface and copies it over the screen,
-    # which already shows the wallpaper; the photo of a real phone shows that layer as
-    # translucent (pale veil and text box, wallpaper visible above the dialog). The model
-    # keeps a 4-bit alpha per pixel (`self.alpha`, 16 = opaque) beside video memory:
-    #   DP_MIX (0x12C8) bit 24 = dp_op (also GMC bit 31): alpha op, pixel alpha = GLOBAL_ALPHA
-    #       (0x1210 low byte, 0-16; the dialogs use 8 and 11)
-    #   DP_MIX bits 26-27 (not in the W100 header): pixels from a source (images, glyph
-    #       foreground, icons) are opaque; brush pixels (fills, lines) keep the alpha
-    #   neither (clears, full-screen images): alpha 0, i.e. empty in a layer
-    # Evidence: the first standby draw clears the layer (plain), veils it (alpha 8) and draws
-    # the dialog with bits 26-27; returning to standby redraws everything with bits 26-27 and
-    # the wallpaper must still show, so its fills cannot make pixels opaque; text and icons
-    # are crisp on the phone, and the screensaver's frames (16-bit images) fully opaque.
-    # Copies: with bits 26-27 and ROP pair AA/CC (DP_MIX 23:16 / 7:0, a masked blit) the
-    # icon's background colour is transparent (see copy_rect); with bits 26-27 otherwise the source is
-    # composited by its alpha over the screen's backdrop (the last plain full copy to that
-    # surface, i.e. the wallpaper) - the dialog layer; plain copies copy colour and alpha.
+    # Operations write straight into chip memory. The UI composes each screen in a layer
+    # surface (0x116B90): it uploads the wallpaper (or a patch of it), veils it with a
+    # translucent white fill, draws on top and copies the result to the displayed surface.
+    #   Alpha op: DP_MIX (0x12C8) bit 24 = dp_op (also GMC bit 31): fills blend the brush
+    #       colour into the destination by GLOBAL_ALPHA (0x1210 low byte, out of 16; the
+    #       dialogs use 8 and 11), as in the TRM's "alphaBlend(src, dst, ScalarAlpha)".
+    #   Masked copy: DP_MIX bits 26-27 (not in the W100 header) with ROP pair AA/CC
+    #       (DP_MIX 23:16 / 7:0) draws icons; see copy_rect.
+    #   Clipping: with GMC bit 3 (dst clipping) writes are limited to SC_TOP_LEFT (0x11BC) -
+    #       SC_BOTTOM_RIGHT (0x11C0), both y << 16 | x, bottom-right exclusive.
     DST_WIDTH_HEIGHT = 0x11198
 
-    def _mode(self):
-        mix, gmc = self.reg(0x12C8), self.reg(0x106C)
-        if mix >> 24 & 1 or gmc >> 31:
-            return min(self.reg(0x1210) & 0xFF, 16)
-        if mix >> 26 & 3:
-            return None
-        return 0
+    def _dp_op(self):
+        return bool(self.reg(0x12C8) >> 24 & 1 or self.reg(0x106C) >> 31)
 
-    def _put(self, a, colour, alpha):
-        self.mem[a:a + 2] = colour
-        if alpha is not None:
-            self.alpha[a >> 1] = alpha
+    def _clip(self):
+        """(x0, y0, x1, y1) that writes are limited to, x1/y1 exclusive."""
+        if not self.reg(0x106C) & 0x8:
+            return 0, 0, 0x2000, 0x2000
+        tl, br = self.reg(0x11BC), self.reg(0x11C0)
+        return tl & 0xFFFF, tl >> 16, br & 0xFFFF, br >> 16
 
-    def _put_row(self, a, data, alpha):
-        self.mem[a:a + len(data)] = data
-        if alpha is not None:
-            self.alpha[a >> 1:(a + len(data)) >> 1] = bytes([alpha]) * (len(data) // 2)
+    @staticmethod
+    def _span(x, y, w, clip):
+        """Visible part [c0, c1) of a w-pixel run at (x, y), as offsets into the run."""
+        x0, y0, x1, y1 = clip
+        if not y0 <= y < y1:
+            return 0, 0
+        return max(0, x0 - x), max(0, min(w, x1 - x))
+
+    def _fill_row(self, a, colour, n):
+        if not self._dp_op():
+            self.mem[a:a + 2 * n] = colour * n
+            return
+        alpha = min(self.reg(0x1210) & 0xFF, 16) / 16
+        fg = int.from_bytes(colour, 'little')
+        cache = {}
+        for c in range(a, a + 2 * n, 2):
+            old = int.from_bytes(self.mem[c:c + 2], 'little')
+            if old not in cache:
+                cache[old] = self.blend565(fg, old, alpha).to_bytes(2, 'little')
+            self.mem[c:c + 2] = cache[old]
 
     def copy_rect(self, sbase, spitch, sx, sy, dbase, dpitch, dx, dy, w, h):
         w = min(w, spitch - sx, dpitch - dx)            # clip to the surfaces' width
         if w <= 0:
             return
         mix = self.reg(0x12C8)
-        special = mix >> 26 & 3
-        masked = special and (mix >> 16 & 0xFF, mix & 0xFF) == (0xAA, 0xCC)
+        masked = mix >> 26 & 3 and (mix >> 16 & 0xFF, mix & 0xFF) == (0xAA, 0xCC)
         # The mask source of these blits is not modelled. Every icon has a flat background in
         # its own colour (0xFFFE for the dialog icons, 0x39ED for the status bar, 0x0000), the
         # firmware sets no key register, and the real phone shows no box around the icon, so
         # the colour of the icon's top-left pixel is taken as transparent (an inference).
         ka = (sbase + (sy * spitch + sx) * 2) & self.MEM_MASK
         key = bytes(self.mem[ka:ka + 2])
-        rows = []
-        for r in range(h):
-            a = (sbase + ((sy + r) * spitch + sx) * 2) & self.MEM_MASK
-            rows.append((bytes(self.mem[a:a + 2 * w]), bytes(self.alpha[a >> 1:(a >> 1) + w])))
-        for r, (row, alpha) in enumerate(rows):
-            a = (dbase + ((dy + r) * dpitch + dx) * 2) & self.MEM_MASK
-            if not special:                                 # plain copy
+        clip = self._clip()
+        rows = [bytes(self.mem[(sbase + ((sy + r) * spitch + sx) * 2) & self.MEM_MASK:][:2 * w])
+                for r in range(h)]                      # read all first: rects may overlap
+        for r, row in enumerate(rows):
+            c0, c1 = self._span(dx, dy + r, w, clip)
+            if c0 >= c1:
+                continue
+            row = row[2 * c0:2 * c1]
+            a = (dbase + ((dy + r) * dpitch + dx + c0) * 2) & self.MEM_MASK
+            if not masked:
                 self.mem[a:a + len(row)] = row
-                self.alpha[a >> 1:(a >> 1) + len(alpha)] = alpha
-                self.backdrop[a] = row
-            elif masked:                                    # icon: corner colour is transparent
-                for c in range(0, len(row), 2):
-                    if row[c:c + 2] != key:
-                        self._put(a + c, row[c:c + 2], 16)
-            else:                                           # layer over the backdrop
-                under = self.backdrop.get(a) or bytes(self.mem[a:a + len(row)])
-                out = bytearray(row)
-                for c in range(0, len(row), 2):
-                    k = alpha[c >> 1]
-                    if k < 16:
-                        top = int.from_bytes(row[c:c + 2], 'little')
-                        bot = int.from_bytes(under[c:c + 2], 'little') if c + 2 <= len(under) else 0
-                        out[c:c + 2] = self.blend565(top, bot, k / 16).to_bytes(2, 'little')
-                self.mem[a:a + len(out)] = out
+                continue
+            for c in range(0, len(row), 2):
+                if row[c:c + 2] != key:
+                    self.mem[a + c:a + c + 2] = row[c:c + 2]
 
     def blit_rect(self):
         """Writing DST_WIDTH_HEIGHT (0x1198, w << 16 | h) starts a blit, as on Radeon: from
@@ -543,7 +551,7 @@ class ATIChip:
     MONO_FRGD, MONO_BKGD = 0x107C, 0x1078   # DP_BRUSH_FRGD_CLR / _BKGD_CLR
 
     def packet3(self, op, p):
-        mode = self._mode()
+        clip = self._clip()
         if op == 0x19 and len(p) >= 2:                  # host-data blit into DST surface
             y, x = p[0] >> 16, p[0] & 0xFFFF
             h, w = p[1] >> 16, p[1] & 0xFFFF
@@ -553,37 +561,43 @@ class ATIChip:
             if src_type in (0, 1):                                # monochrome: 1 bit per pixel
                 fg = (self.reg(self.MONO_FRGD) & 0xFFFF).to_bytes(2, 'little')
                 bg = (self.reg(self.MONO_BKGD) & 0xFFFF).to_bytes(2, 'little')
-                for i in range(w * h):
-                    byte = px[i >> 3] if (i >> 3) < len(px) else 0
-                    on = byte >> (7 - (i & 7)) & 1                # leftmost pixel = bit 7
-                    if on or src_type == 0:                       # type 1: background left alone
-                        r, c = divmod(i, w)
-                        a = (base + ((y + r) * pitch + x + c) * 2) & self.MEM_MASK
-                        self._put(a, fg if on else bg, 16 if mode is None and on else mode)
+                for r in range(h):
+                    c0, c1 = self._span(x, y + r, w, clip)
+                    for c in range(c0, c1):
+                        i = r * w + c
+                        byte = px[i >> 3] if (i >> 3) < len(px) else 0
+                        on = byte >> (7 - (i & 7)) & 1            # leftmost pixel = bit 7
+                        if on or src_type == 0:                   # type 1: background left alone
+                            a = (base + ((y + r) * pitch + x + c) * 2) & self.MEM_MASK
+                            self.mem[a:a + 2] = fg if on else bg
                 self.glyphs += 1
                 return
-            for row in range(h):
-                src = px[row * w * 2:(row + 1) * w * 2]
-                a = (base + ((y + row) * pitch + x) * 2) & self.MEM_MASK
-                self._put_row(a, src, 16 if mode is None else mode)
+            for r in range(h):
+                c0, c1 = self._span(x, y + r, w, clip)
+                if c0 < c1:
+                    a = (base + ((y + r) * pitch + x + c0) * 2) & self.MEM_MASK
+                    self.mem[a:a + 2 * (c1 - c0)] = px[(r * w + c0) * 2:(r * w + c1) * 2]
             self.blits += 1
         elif op == 0x1A and len(p) >= 2:                # paint rectangle with the brush colour
             x, y = p[0] >> 16, p[0] & 0xFFFF
             w, h = p[1] >> 16, p[1] & 0xFFFF
             base, pitch = self.reg(0x1004), self.reg(0x1008)
             colour = (self.reg(0x107C) & 0xFFFF).to_bytes(2, 'little')   # DP_BRUSH_FRGD_CLR
-            for row in range(h):
-                a = (base + ((y + row) * pitch + x) * 2) & self.MEM_MASK
-                self._put_row(a, colour * w, mode)
+            for r in range(h):
+                c0, c1 = self._span(x, y + r, w, clip)
+                if c0 < c1:
+                    self._fill_row((base + ((y + r) * pitch + x + c0) * 2) & self.MEM_MASK,
+                                   colour, c1 - c0)
             self.fills += 1
         elif op == 0x15 and len(p) >= 2:                # POLYLINE: points (y << 16 | x)
             base, pitch = self.reg(0x1004), self.reg(0x1008)
             colour = (self.reg(0x107C) & 0xFFFF).to_bytes(2, 'little')   # DP_BRUSH_FRGD_CLR
+            x0c, y0c, x1c, y1c = clip
             pts = [(w & 0xFFFF, w >> 16) for w in p]
             for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
                 for x, y in self._line(x0, y0, x1, y1):
-                    if 0 <= x < pitch:
-                        self._put((base + (y * pitch + x) * 2) & self.MEM_MASK, colour, mode)
+                    if 0 <= x < pitch and x0c <= x < x1c and y0c <= y < y1c:
+                        self._fill_row((base + (y * pitch + x) * 2) & self.MEM_MASK, colour, 1)
             self.lines += 1
         elif op == 0x1B and len(p) >= 3:                # screen-to-screen blit, rectangles of
             sbase, spitch = self.reg(0x11AC), self.reg(0x11B0)   # (src x,y)(dst x,y)(w,h)
@@ -706,16 +720,23 @@ class DMA:
     def run(self):
         src = (self.r.get16(0x00) << 16) | self.r.get16(0x02)
         n = ((self.r.get16(0x04) & 1) << 16) | self.r.get16(0x06)
-        data = bytes(self.m.uc.mem_read(src, n & ~3))
-        words = [int.from_bytes(data[i:i + 4], 'big') for i in range(0, len(data), 4)]
-        if self.r.get16(0x1C) & 0x100 and words:
-            self.addr = words.pop(0)
+        data = bytes(self.m.uc.mem_read(src, n))
+        if self.r.get16(0x1C) & 0x100 and len(data) >= 4:
+            self.addr = int.from_bytes(data[:4], 'big')
+            data = data[4:]
             self.r.set16(0x1C, self.r.get16(0x1C) & ~0x100)
+        # Image rows are often an odd number of 16-bit pixels: the trailing halfword must
+        # arrive too, and the next transfer continues right after it (dropping it lost the
+        # last pixel of every row and shifted the rows that followed).
+        whole = len(data) & ~3
+        words = [int.from_bytes(data[i:i + 4], 'big') for i in range(0, whole, 4)]
         if words:
             key = self.addr >> 16
             self.ranges[key] = self.ranges.get(key, 0) + len(words)
             self.chip.write_block(self.addr, words)
-            self.addr += 4 * len(words)
+        if len(data) > whole:
+            self.chip.write_tail(self.addr + whole, data[whole:])
+        self.addr += len(data)
         self.count += 1
         self.r.set16(0x18, (self.r.get16(0x18) & ~0x3) | 0x40)   # idle + done
 

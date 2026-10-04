@@ -375,12 +375,13 @@ class ATIChip:
                 self.write32(addr + 4 * i, w)
             return
         ring = self.RING_BASE <= addr < self.RING_BASE + self.RING_SIZE
+        swap = 0 if ring else (self.reg(0x18) >> 2) & 3
         for i, w in enumerate(words):
             a = addr + 4 * i
             if ring:
                 a = self.RING_BASE + (a - self.RING_BASE) % self.RING_SIZE
             a &= self.MEM_MASK
-            self.mem[a:a + 4] = w.to_bytes(4, 'little')     # the Imageon is little-endian
+            self.mem[a:a + 4] = self._swap(w, swap).to_bytes(4, 'little')   # chip is LE
         self.mem_writes += len(words)
         if ring:
             self.cp.extend(words)
@@ -390,6 +391,19 @@ class ATIChip:
             end = (addr + 4 * len(words) - self.RING_BASE) % self.RING_SIZE
             self.regs[self.RB_WPTR] = end // 4
             self.regs[self.RB_RPTR] = ((end - 4 * len(self.cp)) % self.RING_SIZE) // 4
+
+    # CIF_CNTL (0x18) swap_fbuf_1 (bits 3:2): byte lane swap for host writes to chip memory.
+    # Icons are uploaded with 3 (pixel order within each word swapped, 16-bit halves) and
+    # the field is set back to 0 afterwards; without it every pixel pair was mirrored.
+    @staticmethod
+    def _swap(w, mode):
+        if mode == 1:                                   # bytes within each 16-bit half
+            return ((w & 0x00FF00FF) << 8) | ((w >> 8) & 0x00FF00FF)
+        if mode == 2:                                   # all four bytes
+            return int.from_bytes(w.to_bytes(4, 'little'), 'big')
+        if mode == 3:                                   # 16-bit halves
+            return ((w & 0xFFFF) << 16) | (w >> 16)
+        return w
 
     # -- command processor (PM4) -----------------------------------------------------------
     def reg(self, off):
@@ -446,7 +460,7 @@ class ATIChip:
     # the wallpaper must still show, so its fills cannot make pixels opaque; text and icons
     # are crisp on the phone, and the screensaver's frames (16-bit images) fully opaque.
     # Copies: with bits 26-27 and ROP pair AA/CC (DP_MIX 23:16 / 7:0, a masked blit) the
-    # source's black (0x0000) is transparent - icons; with bits 26-27 otherwise the source is
+    # icon's background colour is transparent (see copy_rect); with bits 26-27 otherwise the source is
     # composited by its alpha over the screen's backdrop (the last plain full copy to that
     # surface, i.e. the wallpaper) - the dialog layer; plain copies copy colour and alpha.
     DST_WIDTH_HEIGHT = 0x11198
@@ -476,6 +490,12 @@ class ATIChip:
         mix = self.reg(0x12C8)
         special = mix >> 26 & 3
         masked = special and (mix >> 16 & 0xFF, mix & 0xFF) == (0xAA, 0xCC)
+        # The mask source of these blits is not modelled. Every icon has a flat background in
+        # its own colour (0xFFFE for the dialog icons, 0x39ED for the status bar, 0x0000), the
+        # firmware sets no key register, and the real phone shows no box around the icon, so
+        # the colour of the icon's top-left pixel is taken as transparent (an inference).
+        ka = (sbase + (sy * spitch + sx) * 2) & self.MEM_MASK
+        key = bytes(self.mem[ka:ka + 2])
         rows = []
         for r in range(h):
             a = (sbase + ((sy + r) * spitch + sx) * 2) & self.MEM_MASK
@@ -486,9 +506,9 @@ class ATIChip:
                 self.mem[a:a + len(row)] = row
                 self.alpha[a >> 1:(a >> 1) + len(alpha)] = alpha
                 self.backdrop[a] = row
-            elif masked:                                    # icon: black is transparent
+            elif masked:                                    # icon: corner colour is transparent
                 for c in range(0, len(row), 2):
-                    if row[c:c + 2] != b'\0\0':
+                    if row[c:c + 2] != key:
                         self._put(a + c, row[c:c + 2], 16)
             else:                                           # layer over the backdrop
                 under = self.backdrop.get(a) or bytes(self.mem[a:a + len(row)])

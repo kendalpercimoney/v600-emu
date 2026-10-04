@@ -176,3 +176,11 @@ icon and the translucency were missing:
   is gone; it left stale highlights and white blocks.
 - Open: dialog text drawn white on a white box during start-up (colour source unknown),
   soft-key labels have low contrast, icon transparency is inferred from the corner pixel.
+
+## Status (2026-10-06, later): settings persist
+
+The Intel flash model already handled program/erase; the file system writes (about 12 KB
+in a short session). `Flash.save/load` keep the 128 KB blocks that differ from the
+firmware image; live mode restores them from state/flash.bin at start, saves every 5 s
+when idle and on exit (`--fresh` ignores the file). Verified: answering No to "Continue to
+show Personalise Dialogue on power up?" survives a restart.

@@ -36,6 +36,10 @@ python3 -m venv .venv
 Keyboard: digits, `*` `#`, arrows, Space = OK, Enter = green key, Esc = red key (hold to
 switch off), F1/F2 = soft keys, M = menu.
 
+Changes the phone makes to its flash (settings, contacts, messages) are saved to
+`state/flash.bin` every few seconds and on exit, and restored next time. Start with
+`--fresh` to boot the phone as shipped.
+
 ## Layout
 
 - `v600/`: the machine (memory map, CPU loop, interrupts) and hardware models.
@@ -44,7 +48,6 @@ switch off), F1/F2 = soft keys, M = menu.
 
 ## Next
 
-Rendering fixes in the menus (some titles are missing), flash writes so settings save, then
-the outer display and sound.
+Remaining rendering issues (some dialog text, soft-key contrast), the outer display, sound.
 
 This is an independent hobby project, not affiliated with or endorsed by Motorola.

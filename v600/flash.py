@@ -10,6 +10,8 @@ Commands seen in the firmware's driver: 0x90 read ID, 0x70 read status, 0x50 cle
 0x60+0x03 set configuration, 0x60+0xD0/0x01 lock/unlock, 0x40/0x10 word program,
 0xE8 buffered program, 0x20+0xD0 block erase, 0xB0/0xD0 suspend/resume, 0xFF read array.
 """
+from pathlib import Path
+
 from unicorn import UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
 
 BASE, SIZE = 0x10000000, 0x2000000
@@ -31,6 +33,41 @@ class Flash:
         self.status = READY
         self.log_count = 0
         self.uc.hook_add(UC_HOOK_MEM_WRITE, self._on_write, begin=BASE, end=BASE + SIZE - 1)
+        self.original = bytes(self.uc.mem_read(BASE, SIZE))    # as loaded from the firmware
+        self.writes = 0           # program / erase operations, to tell when to save
+
+    # -- persistence -----------------------------------------------------------------------
+    # The phone's settings, contacts and messages live in the flash file system. A state file
+    # keeps the blocks that differ from the firmware image: 4-byte block address then the
+    # 128 KB block, repeated.
+    def idle(self):
+        """No command in progress and every partition reading the array: safe to snapshot."""
+        return self.cmd is None and all(v == 'array' for v in self.mode.values())
+
+    def save(self, path):
+        self._flush()
+        cur = bytes(self.uc.mem_read(BASE, SIZE))
+        out = bytearray()
+        for off in range(0, SIZE, BLOCK):
+            blk = cur[off:off + BLOCK]
+            if blk != self.original[off:off + BLOCK]:
+                out += (BASE + off).to_bytes(4, 'big') + blk
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix('.tmp')
+        tmp.write_bytes(bytes(out))
+        tmp.replace(path)
+        return len(out) // (BLOCK + 4)
+
+    def load(self, path):
+        data = Path(path).read_bytes()
+        n = 0
+        for i in range(0, len(data) - 3, BLOCK + 4):
+            addr = int.from_bytes(data[i:i + 4], 'big')
+            if BASE <= addr < BASE + SIZE and len(data) >= i + 4 + BLOCK:
+                self.uc.mem_write(addr, data[i + 4:i + 4 + BLOCK])
+                n += 1
+        return n
 
     # -- memory fix-ups ------------------------------------------------------------------
     def _flush(self):
@@ -79,6 +116,8 @@ class Flash:
         part = self._part(addr)
         final = orig                                      # commands leave the array untouched
 
+        if self.cmd in ('program', 'buffer-confirm', 'erase'):
+            self.writes += 1
         if self.cmd in ('program',):
             final = (int.from_bytes(orig, 'big') & value).to_bytes(size, 'big')
             self.cmd = None

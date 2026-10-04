@@ -14,11 +14,13 @@ computer, from the boot animation through the menus.
   one-wire), keypad, flip sensor.
 - ATI Imageon W2250 graphics: command ring and the 2D engine operations the UI uses (blits, fills,
   lines, mono glyph text).
+- A virtual GSM SIM card on the emulated SIM interface: the phone completes SIM start-up,
+  reaches the idle screen ("No Service") and its menus can be navigated.
 - Runs in real time in a browser with clickable keys (`tools/live.py`).
 
-| Insert SIM | Screensaver |
-|---|---|
-| ![Insert SIM](insert_sim.png) | ![Screensaver](screensaver.png) |
+| Idle | Menu | Screensaver |
+|---|---|---|
+| ![Idle](idle.png) | ![Menu](menu.png) | ![Screensaver](screensaver.png) |
 
 ## Running it
 
@@ -31,7 +33,8 @@ python3 -m venv .venv
 .venv/bin/python tools/live.py        # then open http://localhost:8600
 ```
 
-Keyboard: digits, `*` `#`, arrows, Enter = green key, F1/F2 = soft keys, M = menu.
+Keyboard: digits, `*` `#`, arrows, Space = OK, Enter = green key, Esc = red key (hold to
+switch off), F1/F2 = soft keys, M = menu.
 
 ## Layout
 
@@ -41,7 +44,7 @@ Keyboard: digits, `*` `#`, arrows, Enter = green key, F1/F2 = soft keys, M = men
 
 ## Next
 
-Navigation keys and the End key, getting into the menus (with an emulated SIM if needed), flash
-writes so settings save, then the outer display and sound.
+Rendering fixes in the menus (some titles are missing), flash writes so settings save, then
+the outer display and sound.
 
 This is an independent hobby project, not affiliated with or endorsed by Motorola.

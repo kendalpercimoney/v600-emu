@@ -152,3 +152,14 @@ icon and the translucency were missing:
   (bits 26-27) blends the layer over the last plain full copy (the wallpaper).
 - Remaining colour differences (lavender header and text versus dark blue and black in the
   photo) are probably a different skin on that phone's firmware.
+
+## Status (2026-10-05, evening): SIM card, idle screen, menus
+
+- `v600/sim.py`: the SCIM port 0 registers (timed in card clocks/etu, FIFOs, the wrapping
+  general purpose counter, data interrupt = FIQ source 51, general = IRQ source 12) and a
+  GSM 11.11 SIM (T=0, IMSI 001010123456789, CHV1 disabled, phonebook and SMS files).
+- The phone stops the SIM clock when idle; restarting it must not reset the card.
+- Exception stacks: the firmware never sets them (the bootloader does). The guessed FIQ
+  stack overlapped the OS's SVC context; moved to 0x03FFB85C-0x03FFEEEB, which is unused.
+- Result: English UI (no language on the SIM), "Personalise your phone?" on first boot,
+  idle screen with No Service / "V600 EMU", working menus. Some titles do not render yet.

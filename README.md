@@ -48,6 +48,10 @@ Changes the phone makes to its flash (settings, contacts, messages) are saved to
 
 ## Next
 
-Remaining rendering issues (some dialog text, soft-key contrast), the outer display, sound.
+- Sound. Ringtones are synthesised by the Neptune's on-chip DSP from code in its mask ROM,
+  which isn't available, so audio will be recreated from the MCU-to-DSP messages.
+- A pretend network, so start-up gets past "Searching for Network" quickly.
+- The outer display.
+- Known issue: opening the camera app stops the emulator (no camera model yet).
 
 This is an independent hobby project, not affiliated with or endorsed by Motorola.

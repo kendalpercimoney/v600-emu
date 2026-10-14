@@ -6,6 +6,7 @@ from .ds2502 import DS2502
 from .flash import Flash
 from .irq import AITC, OSTimer
 from .ati import ATIChip, ATISerialPort
+from .camera import MT9V111
 from .periph import (DMA, DSPHostPort, FreeRunCounter, EdgePort, Keypad, OneWire,
                      PowerIC, QSPI, Regs)
 
@@ -68,6 +69,7 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     # cs6: the ATI Imageon's serial host interface (CHIP_ID: device 0x5745, ATI vendor 0x1002;
     # the driver accepts 0x5641-7 / 0x5741-7 but its frame-buffer setup needs 0x5645 / 0x5745).
     m.ati = ATIChip(m.log)
+    m.ati.i2c.devices[MT9V111.ADDRESS] = MT9V111()
     m.qspi = QSPI(m, {0x10800562: m.pmic, 0x1080058C: ATISerialPort(m.ati)}, m.log)
     m.attach(0x24851000, 0x1000, m.qspi)
     m.dsp = DSPHostPort(m.log)

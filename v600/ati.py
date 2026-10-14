@@ -35,6 +35,7 @@ SC_TOP_LEFT, SC_BOTTOM_RIGHT = 0x11BC, 0x11C0
 GLOBAL_ALPHA = 0x1210
 DP_SRC_FRGD_CLR, DP_SRC_BKGD_CLR = 0x1240, 0x1244
 DP_MIX = 0x12C8
+I2C_CNTL_0, I2C_CNTL_1, I2C_DATA = 0x0988, 0x098C, 0x0990
 
 
 class ATIChip:
@@ -49,6 +50,7 @@ class ATIChip:
         # veil memory, see "2D engine" below
         self.veiled = bytearray((MEM_MASK + 1) // 2)
         self.under = bytearray(MEM_MASK + 1)
+        self.i2c = I2CEngine()                   # the camera sensor's bus
 
     def reg(self, r):
         return self.regs.get(0x10000 + r, 0)
@@ -67,6 +69,8 @@ class ATIChip:
     # panel reset must still see the real ID.
     def read32(self, addr):
         r = (addr & ~3) - 0x10000
+        if r in I2CEngine.REGS:
+            return self.i2c.read(r)
         v = self.regs.get(addr & ~3, 0)
         if r == RBBM_STATUS:
             return 0x40
@@ -80,6 +84,9 @@ class ATIChip:
 
     def write32(self, addr, value):
         a = addr & ~3
+        if a - 0x10000 in I2CEngine.REGS:
+            self.i2c.write(a - 0x10000, value & 0xFFFFFFFF)
+            return
         if a != 0x10000:
             self.regs[a] = value & 0xFFFFFFFF
         r = a - 0x10000
@@ -396,3 +403,58 @@ class ATISerialPort:
                 vals = bytes(self.chip.read8(addr + i) for i in range(k))
             out[self.READ_DATA:self.READ_DATA + k] = vals
         return bytes(out)
+
+
+class I2CEngine:
+    """The chip's hardware-assisted I2C master (the camera sensor's control bus).
+
+    Not in the W2250 manual; the layout is the Radeon multimedia I2C block (radeon_reg.h,
+    I2C_CNTL_0/1 and I2C_DATA at 0x90/0x94/0x98 there), which matches how the V600 driver
+    (0x10B7EB0C read, 0x10B7EE48 write) uses 0x988/0x98C/0x990:
+      CNTL_0: done/nack/halt (bits 0-2, write 1 to clear), soft_rst (5), start/stop (8/9),
+              receive (10), go (12; the driver waits for it to clear), prescale (16-31)
+      CNTL_1: data byte count (4:0), address byte count (10:8)
+      DATA:   byte FIFO; the address bytes (device address first), then data to send, and
+              after a receive the bytes read.
+    Transfers complete at once."""
+    REGS = (I2C_CNTL_0, I2C_CNTL_1, I2C_DATA)
+    DONE, NACK, HALT, SOFT_RST, RECEIVE, GO = 1, 2, 4, 1 << 5, 1 << 10, 1 << 12
+
+    def __init__(self):
+        self.devices = {}                        # 7-bit address -> device(write(bytes), read(n))
+        self.cntl0 = self.cntl1 = 0
+        self.fifo = []
+
+    def read(self, r):
+        if r == I2C_DATA:
+            return self.fifo.pop(0) if self.fifo else 0
+        return self.cntl0 if r == I2C_CNTL_0 else self.cntl1
+
+    def write(self, r, value):
+        if r == I2C_DATA:
+            self.fifo.append(value & 0xFF)
+        elif r == I2C_CNTL_1:
+            self.cntl1 = value
+        else:
+            status = self.cntl0 & ~value & (self.DONE | self.NACK | self.HALT)
+            self.cntl0 = (value & ~(self.DONE | self.NACK | self.HALT | self.SOFT_RST)) | status
+            if value & self.SOFT_RST:
+                self.fifo.clear()
+            if value & self.GO:
+                self._transfer()
+
+    def _transfer(self):
+        n_addr, n_data = (self.cntl1 >> 8) & 7, self.cntl1 & 0x1F
+        addr, out = self.fifo[:n_addr], self.fifo[n_addr:]
+        self.fifo = []
+        dev = self.devices.get(addr[0] >> 1) if addr else None
+        self.cntl0 &= ~self.GO
+        self.cntl0 |= self.DONE
+        if dev is None:
+            self.cntl0 |= self.NACK
+        elif self.cntl0 & self.RECEIVE or addr[0] & 1:
+            if addr[1:]:
+                dev.write(bytes(addr[1:]))
+            self.fifo = list(dev.read(n_data))
+        else:
+            dev.write(bytes(addr[1:] + out[:n_data]))

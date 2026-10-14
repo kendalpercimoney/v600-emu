@@ -25,10 +25,10 @@ Byte order: **big-endian** (BE-32) ARM7TDMI code, mostly Thumb.
 | `0x24841000` | GPIO / pin mux | Bulk setup at `0x108715F4`; pin reads |
 | `0x24845000` | Clock / power management | `+0x2C` low bits = CPU low-power mode (idle loop); `+0x10` bit 8 start/busy |
 | `0x24848000` | OS timer | `+0x20/+0x22` = 32-bit countdown in time() units, latched on low write; `+0x06` bit 8 IE; `+0x04` bit 8 status (W1C); AITC source 14. `+0x12/+0x16/+0x18` = watchdog pre-warning channel (source 15 -> reset) |
-| `0x24849000` | Watchdog | `+0` control (bit 4 soft reset, bit 5 assert), `+2` service `0x5555/0xAAAA` |
+| `0x24849000` | Watchdog | `+0` control (bit 4 soft reset, bit 5 assert), `+2` service `0x5555/0xAAAA`. Reset requests (`0x10AB7FB8`) spin until the chip resets; not modelled, so a firmware fatal error freezes the phone |
 | `0x2484A000` | 64-bit free-running counter | `+0` high, `+4` low; time() = counter >> 19 (`0x1089B6A4`) |
 | `0x2484B000` | RTC-like timer (source 48) | `+0x20` enable, `+0x38` IE mask, `+0x34` status |
-| `0x2484F000` | SIM card interface (SCIM) | Driver strings `p/SCIM_EXT_PORT`; no card fitted (overrides) |
+| `0x2484F000` | SIM card interface (SCIM) | Neptune spec ch. 51; virtual GSM card in `sim.py`. 32-byte receive FIFO; CNTL bit 3 `onack` makes the card resend instead of losing bytes (176-byte SMS records overrun it) |
 | `0x24851000` | QSPI | `+0x006` start (`0x20|ch`, bit 5 self-clears), `+0x010` bits 0/8 queue active, `+0x012/14` per-channel done (1 = idle, W1C), `+0x400` command RAM, `+0x480..` data RAM. Driver queue table at `[[0x1232E5F8]]` |
 | `0x24854000` | DMA to the ATI host port | `+0/+2` source, `+4/+6` count, `+0x18` control (1 start, bit 6 done W1C, source 26), `+0x1C` bit 8 = address phase (first word = ATI address) |
 | `0x2485BFF2` | DSP host port | `+2` control (bit 7 reset), `+4` status (bit 7 busy, 14 running, 15 buffer taken), `+0xC` reply `0x8001` |
@@ -41,6 +41,7 @@ Byte order: **big-endian** (BE-32) ARM7TDMI code, mostly Thumb.
 |---|---|---|
 | Power IC (PCAP2-style) | QSPI chip select 3 (queue 0, hw channel 5) | 32 x 25-bit regs; word = W bit31, reg bits 30:26, data 24:0. Reg 0 = ISR (W1C; bit 8 power key, 7, 5 = power-on causes); reg 23 = board straps (signal 0xE7) |
 | **ATI Imageon (CHIP_ID 0x5745 / 0x1002)** | Serial host interface on QSPI chip select 6 (queues 12/14, hw channels 3/16) + DMA write port | Driver: ATI Handheld Interface 1.27. Serial frame: byte0 = flags (0x20 write) / len-1, bytes1-3 address; read data from byte 12, write data from byte 8; 32-bit regs little-endian. Regs at 0x10000+. Memory little-endian. Command ring (PM4) 16 KB at 0x80000. Display: graphics base `0x418` (0x103D10), pitch `0x41C` (352), active 176x220 |
+| Micron MT9V111 camera (I2C 0xB8) | ATI I2C master `0x988` CNTL_0 / `0x98C` CNTL_1 / `0x990` data FIFO (Radeon multimedia I2C layout) | Probe `0x1066392A`: R1 = 4 (core page), R255 chip version 0x823A. Without the I2C engine the driver timed out, freed its handle and crashed on it. No image yet (black viewfinder) |
 | DSP (56600-family) | Host port + boot-ROM messaging | Firmware downloaded from code group 0x10040000; ROM version 0x62D5 (patch table 0x10040010) |
 | Intel flash 0x0089/0x880F | Memory bus | Intel command set; driver accepts IDs in table at IRAM `0x03FC4284` |
 

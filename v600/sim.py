@@ -392,15 +392,19 @@ class SIMInterface:
     def update(self):
         now = self.m.insns
         while self.out and self.out[0][0] <= now:            # card -> receive FIFO
+            if self.r[self.ENABLE] & 1 and len(self.rx) >= 32:
+                self.r[self.RSTAT] |= 0x01                    # overrun (oef)
+                if self.r[self.CNTL] & 0x08:                  # onack: NACK it, the card resends
+                    self._delay_out(now)
+                    break
+                self.out.popleft()                            # otherwise the byte is lost
+                continue
             _, b = self.out.popleft()
             self.trace.append((now, 'rx', b))
             if self.r[self.ENABLE] & 1:
                 if self.r[self.CNTL] & 0x02 and b in (0x3B, 0x3F):
                     self.r[self.CNTL] &= ~0x02                # valid TS ends initial char mode
-                if len(self.rx) < 32:
-                    self.rx.append(b)
-                else:
-                    self.r[self.RSTAT] |= 0x01                # overrun
+                self.rx.append(b)
         if self.tx_busy_until is not None and now >= self.tx_busy_until:
             b, self.tx_byte, self.tx_busy_until = self.tx_byte, None, None
             self.trace.append((now, 'tx', b))
@@ -422,6 +426,12 @@ class SIMInterface:
             self.gp_matches = int((n - self.r[self.GPCNT]) // 0x10000) + 1
             self.r[self.XSTAT] |= 0x100
         self._irq()
+
+    def _delay_out(self, now):
+        """Retransmission after a NACK: the pending bytes move back by one character time
+        (plus the error signal's ~2 etu, ignored)."""
+        shift = now + self.byte_insns() - self.out[0][0]
+        self.out = collections.deque((t + shift, b) for t, b in self.out)
 
     def _gp_target(self):
         """Count at which the 16-bit counter next equals GPCNT (it wraps and keeps going)."""

@@ -1,13 +1,14 @@
 """Wires the peripheral models onto a Machine."""
 from . import bootrom, overrides
-from .dsp import DSPMessages
+from .audio import AudioDSP
+from .dsp import MDI, DSPMessages
 from .sim import SIMCard, SIMInterface
 from .ds2502 import DS2502
 from .flash import Flash
 from .irq import AITC, OSTimer
 from .ati import ATIChip, ATISerialPort
 from .camera import MT9V111
-from .periph import (DMA, DSPHostPort, FreeRunCounter, EdgePort, Keypad, OneWire,
+from .periph import (DMA, FreeRunCounter, EdgePort, Keypad, OneWire,
                      PowerIC, QSPI, Regs)
 
 # Power-IC register 23 is VENDOR_REV (PCAP2, Linux ezx-pcap.h), read as signal 0xE7 by the
@@ -61,6 +62,7 @@ def make_pds(m, barker=PDS_BARKER):
 def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     bootrom.install(m)
     m.dspmsg = DSPMessages(m)
+    m.audio = AudioDSP(m, CPU_IPS)
     m.flash = Flash(m)
     m.pmic = PowerIC(m.log)
     m.pmic.regs[23] = PMIC_VENDOR_REV
@@ -72,8 +74,8 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     m.ati.i2c.devices[MT9V111.ADDRESS] = MT9V111()
     m.qspi = QSPI(m, {0x10800562: m.pmic, 0x1080058C: ATISerialPort(m.ati)}, m.log)
     m.attach(0x24851000, 0x1000, m.qspi)
-    m.dsp = DSPHostPort(m.log)
-    m.attach(0x2485BFF0, 0x10, m.dsp)
+    m.mdi = MDI(m)
+    m.attach(0x2485BFF0, 0x10, m.mdi)
     ticks_per_insn = (1 << 19) / (TIME_UNIT_US * 1e-6 * CPU_IPS)
     m.counter = FreeRunCounter(m, ticks_per_insn)
     m.attach(0x2484A000, 0x8, m.counter)
@@ -93,6 +95,7 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     m.sim = SIMInterface(m, SIMCard() if sim_card else None, ips=CPU_IPS)
     m.attach(0x2484F000, 0x100, m.sim)
     m.timers.append(m.sim)
+    m.timers.append(m.audio)
     # Keypad port. Unmodelled it read as all rows low = every key held, which the boot-time
     # 'user initiated panic' key check (0x10AE52B0) took as a request and reset the display.
     m.keypad = Keypad(m.aitc)

@@ -196,24 +196,6 @@ class QSPI:
             self.r.mem[tx:tx + n] = reply
 
 
-class DSPHostPort:
-    """MCU side of the DSP interface, registers at 0x2485BFF2.. (offsets from 0x2485BFF0).
-
-    Boot download (0x10AD5B90): +4 control (0x80 = hold DSP in reset), +6 status (bit 7 = DSP
-    busy, bit 14 = DSP firmware running, bit 15 = buffer taken), +0xA next-buffer command,
-    +0xE reply (0x8001 = block OK). There is no DSP: it always looks ready and running."""
-
-    def __init__(self, log):
-        self.r = Regs(0x10, fixed={0x6: 0xC000, 0xE: 0x8001})
-        self.log = log
-
-    def read(self, off, size):
-        return self.r.read(off, size)
-
-    def write(self, off, size, value):
-        self.r.write(off, size, value)
-
-
 class FreeRunCounter:
     """RTR real-time reference at 0x2484A000: +0 MSB (seconds), +4 LSB (bits 31:17 = 15-bit
     fraction of a second). Effectively a 32.768 kHz count in bits 63:17.

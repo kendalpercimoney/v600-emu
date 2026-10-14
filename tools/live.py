@@ -1,15 +1,15 @@
 """Run the phone in real time and use it from a browser.
 
-    .venv/bin/python tools/live.py [port] [--fresh]      then open http://localhost:8600
+    .venv/bin/python tools/live.py [port] [--fresh] [--state=FILE]   then open http://localhost:8600
 
-The phone's flash changes (settings, contacts, messages) are kept in state/flash.bin and
-restored on the next start; --fresh starts from the firmware image as shipped.
+The phone's flash changes (settings, contacts, messages) are kept in state/flash.bin (or
+FILE) and restored on the next start; --fresh starts from the firmware image as shipped.
 
 The emulator thread runs in short bursts and sleeps whenever virtual time gets ahead of the
 wall clock (idle periods are fast-forwarded by the machine, then waited out here). The page
-shows the display and sends key presses; keyboard: digits, * #, arrows, Space = centre (OK),
-Enter = green (send), Esc / Backspace = red (end; hold ~2 s to switch
-off), F1 / F2 = left / right soft key, M = menu, +/- = volume.
+shows the display, plays the sound (button "Sound") and sends key presses; keyboard: digits,
+* #, arrows, Space = centre (OK), Enter = green (send), Esc / Backspace = red (end; hold ~2 s
+to switch off), F1 / F2 = left / right soft key, M = menu, +/- = volume.
 """
 import io
 import os
@@ -55,14 +55,15 @@ STATE = Path(__file__).resolve().parent.parent / 'state' / 'flash.bin'
 
 
 class Phone:
-    def __init__(self, fresh=False):
+    def __init__(self, fresh=False, state=STATE):
+        self.state = state
         self.m = Machine(log=lambda *a: None)
         self.m.verbose_mmio = False
         board.build(self.m)
         self.m.reset()
-        if STATE.exists() and not fresh:
-            n = self.m.flash.load(STATE)
-            print(f'restored {n} flash blocks from {STATE}', flush=True)
+        if state.exists() and not fresh:
+            n = self.m.flash.load(state)
+            print(f'restored {n} flash blocks from {state}', flush=True)
         self.saved_writes = 0
         self.last_save = time.monotonic()
         self.messages = []
@@ -113,8 +114,13 @@ class Phone:
         self.last_save = time.monotonic()
         if f.writes != self.saved_writes and f.idle():
             with self.lock:
-                f.save(STATE)
+                f.save(self.state)
             self.saved_writes = f.writes
+
+    def sound(self):
+        """PCM (8 kHz, 16-bit little-endian) made since the last call. No lock: the emulator
+        thread retakes it at once while catching up, which would starve this request."""
+        return self.m.audio.pull()
 
     def status(self):
         lag = (time.monotonic() - self.wall0) - (self.m.insns - self.virt0) / CPU_IPS
@@ -147,6 +153,8 @@ def handler(phone):
                 if name in Keypad.CODES or name == 'red':
                     phone.keys.put((name, q.get('down', ['1'])[0] == '1'))
                 self.send(b'ok', 'text/plain')
+            elif u.path == '/audio':
+                self.send(phone.sound(), 'application/octet-stream')
             elif u.path == '/status':
                 self.send(json.dumps(phone.status()).encode(), 'application/json')
             else:
@@ -157,7 +165,8 @@ def handler(phone):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     port = int(args[0]) if args else 8600
-    phone = Phone(fresh='--fresh' in sys.argv)
+    state = next((Path(a[8:]) for a in sys.argv if a.startswith('--state=')), STATE)
+    phone = Phone(fresh='--fresh' in sys.argv, state=state)
     server = None
     for p in range(port, port + 10):        # bind first: a busy port must not leave the
         try:                                # emulator thread running

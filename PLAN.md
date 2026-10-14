@@ -200,3 +200,21 @@ engine, display), using register names and fields from the Zaurus kdrive imageon
 Still inferred: icon transparency (corner pixel), the meaning of DP_MIX bits 26-27.
 The white start-up screen is the "Searching for Network" dialog: the idle screen paints the
 wallpaper only once it closes, which takes ~60 s without a network (real phones: seconds).
+
+## Status (2026-10-15, overnight): SIM fix, camera, sound (tones)
+
+- The phone rebooted itself 4.7 s into every start: reading a 176-byte SMS record overran
+  the SIM receive FIFO, which with CNTL.onack the real SCIM NACKs (the card resends). The
+  SIM driver reported a fatal error, the watchdog reset spun forever and the screen froze on
+  "Searching for Network". Fixed; the idle screen and wallpaper now come up after the search.
+- Camera: the W2250's I2C master (Radeon multimedia I2C layout) and a Micron MT9V111
+  sensor (registers only). The viewfinder opens, black.
+- Sound, first part. The DSP runs from mask ROM we do not have, so its audio side is a
+  high-level stand-in (audio.py): the audio manager's type 8 commands are decoded, tone
+  sequences (0x1B80: Q15 oscillator coefficients, durations in 8 kHz samples, per-tone
+  gains in 0x1B83) are rendered as PCM and answered with 0x9B80 when they end. Before, the
+  missing reply to the power-up tune blocked every later tone. Key clicks and the power-up
+  tune play in live mode (button "Sound").
+- tools/drive.py: scripted headless sessions with forked scenarios.
+- Next: MIDI ringtones (the MME MIDI path, `MME_MOF_*`: wavetable download, prefill and
+  data through the MDI), then MP3/AMR.

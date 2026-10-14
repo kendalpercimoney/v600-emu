@@ -52,6 +52,7 @@
       arrows, <kbd>Space</kbd> OK, <kbd>Enter</kbd> send, <kbd>Esc</kbd> end (hold about 2 s to
       switch off), <kbd>F1</kbd>/<kbd>F2</kbd> soft keys, <kbd>M</kbd> menu,
       <kbd>+</kbd>/<kbd>−</kbd> volume.</div>
+    <p><button id="sound" class="small" style="padding:8px 14px">Sound: off</button></p>
     <div id="status"></div>
     <div id="log"></div>
   </aside>
@@ -84,6 +85,24 @@ const held = new Set();
 addEventListener('keydown', e => { const k = map[e.key]; if (!k || held.has(k)) return;
   held.add(k); e.preventDefault(); send(k, true); });
 addEventListener('keyup', e => { const k = map[e.key]; if (!k) return; held.delete(k); send(k, false); });
+// Sound: 8 kHz 16-bit PCM from /audio, queued back to back (browsers need a click first).
+let actx = null, playAt = 0;
+const soundBtn = document.getElementById('sound');
+soundBtn.onclick = () => {
+  if (actx) { actx.close(); actx = null; } else { actx = new AudioContext(); playAt = 0; }
+  soundBtn.textContent = actx ? 'Sound: on' : 'Sound: off';
+};
+setInterval(async () => {
+  if (!actx) return;
+  const pcm = new Int16Array(await (await fetch('/audio')).arrayBuffer());
+  if (!actx || !pcm.length || pcm.every(v => v === 0)) return;
+  const buf = actx.createBuffer(1, pcm.length, 8000), ch = buf.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+  const src = actx.createBufferSource();
+  src.buffer = buf; src.connect(actx.destination);
+  playAt = Math.max(playAt, actx.currentTime + 0.1);
+  src.start(playAt); playAt += buf.duration;
+}, 100);
 setInterval(async () => {
   try {
     const s = await (await fetch('/status')).json();

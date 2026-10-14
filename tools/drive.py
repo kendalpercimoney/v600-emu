@@ -39,12 +39,30 @@ def boot(state=False, log=False, verbose=False):
     return m
 
 
+class Deadline:
+    """Timer entry that stops idle fast-forward at the target time."""
+
+    def __init__(self, m, insns):
+        self.m, self.insns = m, insns
+
+    def update(self):
+        pass
+
+    def next_event(self):
+        return max(self.insns, self.m.insns + 1) * self.m.counter.k
+
+
 def run_until(m, seconds):
     """Run to `seconds` of phone time; False if the CPU faulted."""
-    while m.insns < seconds * CPU_IPS:
-        n = min(2_000_000, int(seconds * CPU_IPS) - m.insns)
-        if m.run(max_insns=max(n, 20_000), poll_slices=10**9, spin_slices=10**9) == 'error':
-            return False
+    stop = Deadline(m, int(seconds * CPU_IPS))
+    m.timers.append(stop)
+    try:
+        while m.insns < stop.insns:
+            n = min(2_000_000, stop.insns - m.insns)
+            if m.run(max_insns=max(n, 20_000), poll_slices=10**9, spin_slices=10**9) == 'error':
+                return False
+    finally:
+        m.timers.remove(stop)
     return True
 
 

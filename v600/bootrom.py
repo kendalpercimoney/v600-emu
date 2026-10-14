@@ -13,7 +13,7 @@ ROUTINES = {
     0xFCDC: ('rom_fcdc_init', 0),        # first call of the boot sequence, no args
     0xFFD0: ('rom_ffd0', 0),             # (0) -> u16
     0xFFF4: ('dsp_receive', lambda m: m.dspmsg.receive(m)),   # (queue, buf) -> 1 if a message
-    0x100C2: ('rom_100c2_get', 0),       # (id, buf) -> 1 on success
+    0x100C2: ('dsp_receive2', lambda m: m.dspmsg.receive(m)),  # same; the audio reply receiver
     0x101CC: ('dsp_send', lambda m: m.dspmsg.send(m)),        # (type, buf, nwords, flag) -> 1
     0x102AA: ('rom_102aa', 0),           # (1)
     0x102C0: ('rom_102c0', 0),

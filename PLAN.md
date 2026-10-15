@@ -221,3 +221,16 @@ wallpaper only once it closes, which takes ~60 s without a network (real phones:
   MRR0 word (0x8002), and ROM 0xFFD0 reports its queue level. MIDI is synthesised in
   midi.py (additive GM approximation); MP3 frames are handed to the browser to decode.
   Not done: AMR/WAV clips, voice calls, the phone's real instrument sounds (DSP ROM).
+
+## Status (2026-10-15, afternoon): speed
+
+Profiled instead of guessing (cProfile for Python, macOS `sample` for Unicorn's native code):
+- Per-instruction cost: run() counts instructions with count=, and Unicorn's per-instruction
+  helper then walks every code hook; ~20 hooks took the CPU from ~116 to ~12 MIPS. Hooks
+  are now BKPT breakpoints handled from the interrupt hook (machine.py, Machine.hook).
+- The idle loop's low-power register was 90% of MMIO calls into Python: now plain memory.
+- ATI blits copied the 4 MB chip memory per row (a slicing bug); uploads are numpy now.
+Boot to idle ~60 s -> ~13 s headless; a Java game launch 12 s -> 5 s for 20 s of phone time.
+Tried and dropped: wall-clock slices without count= (Unicorn's timeout never fires here; a
+helper thread can stop it, but the flash file system misbehaved), and ending slices when
+the OS idles (the boot animation stalls; the idle routine is entered constantly).

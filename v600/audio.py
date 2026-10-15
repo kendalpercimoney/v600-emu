@@ -44,6 +44,8 @@ Sampled sounds (the audio/video output filter, MME_AVOF_*): 0x1F82 [handle, code
   whole file (media_events) for the listener to decode: browsers decode MP3, Python can't
   without extra packages.
 """
+import collections
+
 import numpy as np
 
 from .midi import MidiStream, RATE
@@ -122,7 +124,7 @@ class AudioDSP:
         self.gains = []
         self.replies = []               # (due sample, words)
         self.pulled = None              # next sample index a listener will get
-        self.commands = []              # (sample, words) for debugging
+        self.commands = collections.deque(maxlen=500)     # (sample, words), for debugging
         self.midi = None                # MidiStream of the current MIDI session
         self.midi_start = None          # sample where it started playing
         self.midi_clips = []

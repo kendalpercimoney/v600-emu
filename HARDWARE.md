@@ -16,7 +16,7 @@ Byte order: **big-endian** (BE-32) ARM7TDMI code, mostly Thumb.
 | `0x11FE0000-0x11FE07FF` | Certificates / security data | Strings |
 | `0x12000000-0x123FFFFF` | External RAM (4 MB). Data/BSS up to `~0x12400000` | Scatter table, `0x12000000` probed 3x at boot |
 | `0x28880020` | External memory/chip-select controller (written at entry: `0x2201`, `0x3011`, `0x60000`, `0`) | `0x106289C0` |
-| `0x0000-0x1FFFF` | Boot ROM (not in superfile): MCU-DSP messaging (`0xFFF4` receive, `0x101CC` send) and a few other services; stubbed in `bootrom.py` | Veneers in the firmware |
+| `0x0000-0x1FFFF` | Boot ROM (not in superfile): MCU-DSP messaging (`0xFFF4` / `0x100C2` receive, `0x101CC` send, `0xFFD0` data-queue level) and a few other services; stubbed in `bootrom.py` | Veneers in the firmware |
 
 ## Peripherals (modelled)
 
@@ -31,7 +31,7 @@ Byte order: **big-endian** (BE-32) ARM7TDMI code, mostly Thumb.
 | `0x2484F000` | SIM card interface (SCIM) | Neptune spec ch. 51; virtual GSM card in `sim.py`. 32-byte receive FIFO; CNTL bit 3 `onack` makes the card resend instead of losing bytes (176-byte SMS records overrun it) |
 | `0x24851000` | QSPI | `+0x006` start (`0x20|ch`, bit 5 self-clears), `+0x010` bits 0/8 queue active, `+0x012/14` per-channel done (1 = idle, W1C), `+0x400` command RAM, `+0x480..` data RAM. Driver queue table at `[[0x1232E5F8]]` |
 | `0x24854000` | DMA to the ATI host port | `+0/+2` source, `+4/+6` count, `+0x18` control (1 start, bit 6 done W1C, source 26), `+0x1C` bit 8 = address phase (first word = ATI address) |
-| `0x2485BFF2` | MCU-DSP interface (MDI) registers | Neptune spec ch. 37: `+2` MCVR, `+4` MCR (bit 7 holds the DSP in reset), `+6` MSR (bit 11 general interrupt 0, W1C -> AITC 17), `+8/+A` MTR1/0, `+C/+E` MRR1/0 (`0x8001` = download block OK) |
+| `0x2485BFF2` | MCU-DSP interface (MDI) registers | Neptune spec ch. 37: `+2` MCVR, `+4` MCR (bit 7 holds the DSP in reset), `+6` MSR (bit 11 general interrupt 0, W1C -> AITC 17), `+8/+A` MTR1/0, `+C/+E` MRR1/0 (`0x8001` = download block OK; a word in MRR0 raises AITC 42 and goes to the data callbacks, `0x8002` = more MIDI data) |
 | `0x2485C800` | DSP shared RAM | Download buffers; `0x2485D934/36` audio reply queue (0xB) write/read index, compared by the MDI ISR `0x10AD3364` |
 | `0x29890000` | AITC interrupt controller | Freescale AITC layout (see `irq.py`); handler table `0x120BEBF8` |
 

@@ -86,7 +86,8 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     ostimer = OSTimer(m, m.aitc, m.counter)
     m.attach(0x24848000, 0x40, ostimer)
     m.timers.append(ostimer)
-    m.hook(IDLE_LOW_POWER, lambda m: setattr(m, 'idle_hint', True))
+    m.hook(IDLE_LOW_POWER, lambda m: setattr(m, 'idle_hint', True), once_per_slice=True)
+    m.plain(0x2484502C)                 # low-power mode: written and read on every idle pass
     # Unidentified unit at 0x24845000: +0x18 data, +0x10 bit 8 = start/busy (self-clearing).
     m.attach(0x24845000, 0x1000, Regs(0x1000, selfclear={0x10: 0x100}))
     # SIM card interface (SCIM) at 0x2484F000 (driver strings p/SCIM_EXT_PORT, p/dl_sim_mgr)

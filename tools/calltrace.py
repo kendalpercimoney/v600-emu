@@ -34,7 +34,7 @@ def tracer(name):
     return f
 
 for name, addr in syms.items():
-    if name.startswith(prefixes) and 0x10080000 <= addr < 0x11180000 and (addr & ~1) not in m.code_hooks:
+    if name.startswith(prefixes) and 0x10080000 <= addr < 0x11180000 and (addr & ~1) not in m.code_hooks and (addr & ~1) not in m.breakpoints:
         m.hook(addr, tracer(name))
 r = m.run(n)
 print(r)

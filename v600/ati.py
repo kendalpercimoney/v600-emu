@@ -327,18 +327,18 @@ class ATIChip:
     def copy(self, sbase, spitch, sx, sy, dx, dy, w, h):
         mix = self.reg(DP_MIX)
         icon = mix >> 26 & 3 and (mix >> 16 & 0xFF, mix & 0xFF) == (0xAA, 0xCC)
-        key = bytes(self.mem[(sbase + (sy * spitch + sx) * 2) & MEM_MASK:][:2])
         w = min(w, spitch - sx)
-        rows = [bytes(self.mem[(sbase + ((sy + r) * spitch + sx) * 2) & MEM_MASK:][:2 * w])
-                for r in range(h)]                      # read first: rectangles may overlap
+        src = [(sbase + ((sy + r) * spitch + sx) * 2) & MEM_MASK for r in range(h)]
+        rows = [bytes(self.mem[a:a + 2 * w]) for a in src]   # read first: may overlap
+        key = rows[0][:2] if rows else b''
         for r, a, c0, c1 in self._rows(dx, dy, w, h):
             row = rows[r][2 * c0:2 * c1]
             if not icon:
                 self._put(a, row, False)
                 continue
-            for c in range(0, len(row), 2):
-                if row[c:c + 2] != key:
-                    self.mem[a + c:a + c + 2] = row[c:c + 2]
+            new = np.frombuffer(row, '<u2')
+            old = np.frombuffer(self.mem, '<u2', len(new), a)
+            self.mem[a:a + len(row)] = np.where(new == int.from_bytes(key, 'little'), old, new).tobytes()
 
     @staticmethod
     def _line(x0, y0, x1, y1):

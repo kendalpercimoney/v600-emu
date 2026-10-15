@@ -33,7 +33,7 @@ class Flash:
         self.status = READY
         self.log_count = 0
         self.uc.hook_add(UC_HOOK_MEM_WRITE, self._on_write, begin=BASE, end=BASE + SIZE - 1)
-        self.original = bytes(self.uc.mem_read(BASE, SIZE))    # as loaded from the firmware
+        self.original = bytearray(self.uc.mem_read(BASE, SIZE))  # as loaded from the firmware
         self.writes = 0           # program / erase operations, to tell when to save
 
     # -- persistence -----------------------------------------------------------------------
@@ -43,6 +43,10 @@ class Flash:
     def idle(self):
         """No command in progress and every partition reading the array: safe to snapshot."""
         return self.cmd is None and all(v == 'array' for v in self.mode.values())
+
+    def patched(self, addr, data):
+        """The emulator changed code here (a breakpoint, Machine.hook): not phone data."""
+        self.original[addr - BASE:addr - BASE + len(data)] = data
 
     def save(self, path):
         self._flush()

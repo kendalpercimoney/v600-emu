@@ -16,7 +16,12 @@ computer, from the boot animation through the menus.
   lines, mono glyph text).
 - A virtual GSM SIM card on the emulated SIM interface: the phone completes SIM start-up,
   reaches the idle screen ("No Service") and its menus can be navigated.
-- Runs in real time in a browser with clickable keys (`tools/live.py`).
+- Sound: key clicks, the power-up tune, tone, MIDI and MP3 ringtones. The phone's DSP runs
+  from ROM we don't have, so its audio side is recreated from the commands the firmware
+  sends it (`v600/audio.py`, MIDI synthesis in `v600/midi.py`; MP3 is decoded by the browser).
+- The camera app opens (black viewfinder: the sensor answers, but makes no picture yet).
+- Runs in real time in a browser with clickable keys (`tools/live.py`); press "Sound" on the
+  page to hear it.
 
 | Idle | Menu | Screensaver |
 |---|---|---|
@@ -48,10 +53,7 @@ Changes the phone makes to its flash (settings, contacts, messages) are saved to
 
 ## Next
 
-- Sound. Ringtones are synthesised by the Neptune's on-chip DSP from code in its mask ROM,
-  which isn't available, so audio will be recreated from the MCU-to-DSP messages.
 - A pretend network, so start-up gets past "Searching for Network" quickly.
-- The outer display.
-- Known issue: opening the camera app stops the emulator (no camera model yet).
+- Phone calls (voice path), the outer display, a camera picture.
 
 This is an independent hobby project, not affiliated with or endorsed by Motorola.

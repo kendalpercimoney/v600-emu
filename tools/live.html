@@ -85,24 +85,56 @@ const held = new Set();
 addEventListener('keydown', e => { const k = map[e.key]; if (!k || held.has(k)) return;
   held.add(k); e.preventDefault(); send(k, true); });
 addEventListener('keyup', e => { const k = map[e.key]; if (!k) return; held.delete(k); send(k, false); });
-// Sound: 16 kHz 16-bit PCM from /audio (v600/midi.py RATE), queued back to back (browsers need a click first).
-let actx = null, playAt = 0;
+// Sound. /audio: first sample index (uint32 LE), then 16 kHz 16-bit PCM (v600/midi.py RATE),
+// queued back to back. /media: MP3 clips (ringtones) with the sample they start / stop at,
+// decoded here and placed on the same timeline. Browsers need a click before playing sound.
+const RATE = 16000;
+let actx = null, playAt = 0, mapSample = 0, mapTime = 0, mediaBusy = false;
+const clips = new Map();
 const soundBtn = document.getElementById('sound');
 soundBtn.onclick = () => {
-  if (actx) { actx.close(); actx = null; } else { actx = new AudioContext(); playAt = 0; }
+  if (actx) { actx.close(); actx = null; clips.clear(); } else { actx = new AudioContext(); playAt = 0; }
   soundBtn.textContent = actx ? 'Sound: on' : 'Sound: off';
 };
+const timeOf = sample => mapTime + (sample - mapSample) / RATE;
 setInterval(async () => {
   if (!actx) return;
-  const pcm = new Int16Array(await (await fetch('/audio')).arrayBuffer());
-  if (!actx || !pcm.length || pcm.every(v => v === 0)) return;
-  const buf = actx.createBuffer(1, pcm.length, 16000), ch = buf.getChannelData(0);
-  for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
-  const src = actx.createBufferSource();
-  src.buffer = buf; src.connect(actx.destination);
+  const body = await (await fetch('/audio')).arrayBuffer();
+  if (!actx || body.byteLength < 4) return;
+  const start = new DataView(body).getUint32(0, true), pcm = new Int16Array(body, 4);
+  if (playAt > actx.currentTime + 0.5) playAt = actx.currentTime + 0.1;   // backlog: skip ahead
   playAt = Math.max(playAt, actx.currentTime + 0.1);
-  src.start(playAt); playAt += buf.duration;
+  mapSample = start; mapTime = playAt;
+  if (pcm.some(v => v !== 0)) {
+    const buf = actx.createBuffer(1, pcm.length, RATE), ch = buf.getChannelData(0);
+    for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+    const src = actx.createBufferSource();
+    src.buffer = buf; src.connect(actx.destination); src.start(playAt);
+  }
+  playAt += pcm.length / RATE;
 }, 100);
+setInterval(async () => {
+  if (!actx || mediaBusy) return;
+  mediaBusy = true;
+  try { await media(); } finally { mediaBusy = false; }
+}, 250);
+async function media() {
+  for (const e of await (await fetch('/media')).json()) {
+    if (!actx) return;
+    if (e.data) {
+      const bytes = Uint8Array.from(atob(e.data), c => c.charCodeAt(0));
+      const src = actx.createBufferSource();
+      try { src.buffer = await actx.decodeAudioData(bytes.buffer); } catch (err) { continue; }
+      src.connect(actx.destination);
+      const late = actx.currentTime - timeOf(e.at);
+      src.start(late > 0 ? 0 : timeOf(e.at), Math.max(late, 0));
+      clips.set(e.id, src);
+    } else if (clips.has(e.id)) {
+      clips.get(e.id).stop(Math.max(timeOf(e.at), actx.currentTime));
+      clips.delete(e.id);
+    }
+  }
+}
 setInterval(async () => {
   try {
     const s = await (await fetch('/status')).json();

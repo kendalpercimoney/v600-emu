@@ -11,6 +11,7 @@ shows the display, plays the sound (button "Sound") and sends key presses; keybo
 * #, arrows, Space = centre (OK), Enter = green (send), Esc / Backspace = red (end; hold ~2 s
 to switch off), F1 / F2 = left / right soft key, M = menu, +/- = volume.
 """
+import base64
 import io
 import os
 import json
@@ -118,9 +119,23 @@ class Phone:
             self.saved_writes = f.writes
 
     def sound(self):
-        """PCM (16 kHz, 16-bit little-endian) made since the last call. No lock: the emulator
-        thread retakes it at once while catching up, which would starve this request."""
-        return self.m.audio.pull()
+        """Index of the first sample (uint32 LE), then PCM (16 kHz, 16-bit LE) made since the
+        last call. No lock: the emulator thread retakes it at once while catching up, which
+        would starve this request."""
+        start, pcm = self.m.audio.pull()
+        return (start & 0xFFFFFFFF).to_bytes(4, 'little') + pcm
+
+    def media(self):
+        """Clips (MP3 ringtones) started or stopped since the last call, as JSON."""
+        out = []
+        for kind, ident, at, *rest in self.m.audio.media_events():
+            e = {'id': ident, 'at': at}
+            if kind == 'start':
+                e.update(mime=rest[0], data=base64.b64encode(rest[1]).decode())
+            else:
+                e['stop'] = True
+            out.append(e)
+        return json.dumps(out).encode()
 
     def status(self):
         lag = (time.monotonic() - self.wall0) - (self.m.insns - self.virt0) / CPU_IPS
@@ -155,6 +170,8 @@ def handler(phone):
                 self.send(b'ok', 'text/plain')
             elif u.path == '/audio':
                 self.send(phone.sound(), 'application/octet-stream')
+            elif u.path == '/media':
+                self.send(phone.media(), 'application/json')
             elif u.path == '/status':
                 self.send(json.dumps(phone.status()).encode(), 'application/json')
             else:

@@ -40,7 +40,9 @@ Sampled sounds (the audio/video output filter, MME_AVOF_*): 0x1F82 [handle, code
   0, sample rate] opens a session, answered by 0x9F80 [handle] (MME_FW_MDI_avio_callback
   finds the filter by handle); frames follow as [0x5F80, words, handle, 0x0080, flags,
   time ms, frame] (MP3: one 120-byte MPEG-2 layer III frame each), 0x1F84 [handle, 1] plays,
-  0x1F83 [handle, 1] closes, answered by 0x9F81 [handle]. Decoding is not done yet.
+  0x1F83 [handle, 1] closes, answered by 0x9F81 [handle]. The frames are passed on as a
+  whole file (media_events) for the listener to decode: browsers decode MP3, Python can't
+  without extra packages.
 """
 import numpy as np
 
@@ -125,6 +127,10 @@ class AudioDSP:
         self.midi_start = None          # sample where it started playing
         self.midi_clips = []
         self.midi_asked = 0             # sample of the last data request
+        self.sessions = {}              # sampled-sound handle -> bytearray of frames
+        self.media = {}                 # handle -> id of the clip playing
+        self.events = []                # ('start', id, sample, mime, bytes) / ('stop', id, sample)
+        self.next_id = 1
 
     def now(self):
         return self.m.insns * RATE // self.ips
@@ -152,8 +158,20 @@ class AudioDSP:
                 self.replies.append((now + 16, MIDI_ENDED))
             self.midi = self.midi_start = None
         elif op == 0x1F82:
+            self.sessions[w[2] << 16 | w[3]] = bytearray()
             self.replies.append((now + 16, [0x9F80, 0x0002, w[2], w[3]]))
+        elif op == 0x1F84 and w[4] == 1:
+            handle = w[2] << 16 | w[3]
+            frames = self.sessions.get(handle)
+            if frames and handle not in self.media:
+                self.media[handle] = self.next_id
+                self._event('start', self.next_id, now, 'audio/mpeg', bytes(frames))
+                self.next_id += 1
         elif op == 0x1F83:
+            handle = w[2] << 16 | w[3]
+            if handle in self.media:
+                self._event('stop', self.media.pop(handle), now)
+            self.sessions.pop(handle, None)
             self.replies.append((now + 16, [0x9F81, 0x0002, w[2], w[3]]))
 
     def data(self, w):
@@ -162,9 +180,14 @@ class AudioDSP:
         i = 0
         while i + 4 <= len(raw):
             op, n = int.from_bytes(raw[i:i + 2], 'big'), int.from_bytes(raw[i + 2:i + 4], 'big')
+            body = raw[i + 4:i + 4 + 2 * n]
             if op == 0x5E80:
                 self.midi = self.midi or MidiStream()
-                self.midi.feed(raw[i + 4:i + 4 + 2 * n])
+                self.midi.feed(body)
+            elif op == 0x5F80:
+                frames = self.sessions.get(int.from_bytes(body[:4], 'big'))
+                if frames is not None:
+                    frames += body[12:]
             i += 4 + 2 * n
 
     def space(self):
@@ -172,6 +195,14 @@ class AudioDSP:
         while there is room (0x10AECBF0), MIDI data only below 0x82 words. Data is taken
         as it arrives, so the queue always reads empty."""
         return 0
+
+    def _event(self, *e):
+        self.events = self.events[-20:] + [e]
+
+    def media_events(self):
+        """Clips started or stopped since the last call (for a listener: live mode)."""
+        events, self.events = self.events, []
+        return events
 
     def _cut(self, items, at):
         for t in items:
@@ -217,8 +248,8 @@ class AudioDSP:
 
     # -- output -------------------------------------------------------------------------
     def pull(self):
-        """16-bit little-endian mono PCM at RATE from the last pull up to now. Safe to call
-        from another thread (reads a snapshot of what is playing)."""
+        """(first sample index, 16-bit little-endian mono PCM at RATE) from the last pull up
+        to now. Safe to call from another thread (reads a snapshot of what is playing)."""
         now = self.now()
         start = now if self.pulled is None else max(self.pulled, now - RATE)
         self.pulled = now
@@ -227,4 +258,4 @@ class AudioDSP:
             a, b = max(t.start, start), now if t.end is None else min(t.end, now)
             if a < b:
                 out[a - start:b - start] += t.render(np.arange(a, b))
-        return (np.clip(out, -1, 1) * 32767).astype('<i2').tobytes()
+        return start, (np.clip(out, -1, 1) * 32767).astype('<i2').tobytes()

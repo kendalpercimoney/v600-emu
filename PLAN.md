@@ -216,5 +216,8 @@ wallpaper only once it closes, which takes ~60 s without a network (real phones:
   missing reply to the power-up tune blocked every later tone. Key clicks and the power-up
   tune play in live mode (button "Sound").
 - tools/drive.py: scripted headless sessions with forked scenarios.
-- Next: MIDI ringtones (the MME MIDI path, `MME_MOF_*`: wavetable download, prefill and
-  data through the MDI), then MP3/AMR.
+- Sound, second part: MIDI and MP3 ringtones (see the docstring of audio.py for the
+  protocol). Media data travels as type 0 messages; the DSP asks for MIDI data with an
+  MRR0 word (0x8002), and ROM 0xFFD0 reports its queue level. MIDI is synthesised in
+  midi.py (additive GM approximation); MP3 frames are handed to the browser to decode.
+  Not done: AMR/WAV clips, voice calls, the phone's real instrument sounds (DSP ROM).

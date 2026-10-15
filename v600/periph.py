@@ -1,4 +1,6 @@
 """Peripheral models. Each has read(off, size) -> int and write(off, size, value)."""
+import numpy as np
+
 
 
 class Regs:
@@ -305,8 +307,8 @@ class DMA:
         # arrive too, and the next transfer continues right after it (dropping it lost the
         # last pixel of every row and shifted the rows that followed).
         whole = len(data) & ~3
-        words = [int.from_bytes(data[i:i + 4], 'big') for i in range(0, whole, 4)]
-        if words:
+        words = np.frombuffer(data[:whole], '>u4')
+        if len(words):
             key = self.addr >> 16
             self.ranges[key] = self.ranges.get(key, 0) + len(words)
             self.chip.write_block(self.addr, words)

@@ -129,16 +129,28 @@ class ATIChip:
         written into the command ring are executed in order."""
         if 0x10000 <= addr < 0x20000:
             for i, w in enumerate(words):
-                self.write32(addr + 4 * i, w)
+                self.write32(addr + 4 * i, int(w))
             return
         ring = self.RING_BASE <= addr < self.RING_BASE + self.RING_SIZE
-        swap = 0 if ring else (self.reg(CIF_CNTL) >> 2) & 3
+        if not ring:                                    # chip memory, one numpy pass
+            w = np.asarray(words, dtype=np.uint32)
+            swap = (self.reg(CIF_CNTL) >> 2) & 3
+            if swap == 1:
+                w = ((w & 0x00FF00FF) << 8) | ((w >> 8) & 0x00FF00FF)
+            elif swap == 2:
+                w = w.byteswap()
+            elif swap == 3:
+                w = (w << 16) | (w >> 16)
+            data = w.astype('<u4').tobytes()
+            a = addr & MEM_MASK
+            n = min(len(data), MEM_MASK + 1 - a)
+            self.mem[a:a + n] = data[:n]
+            self.mem[:len(data) - n] = data[n:]           # wraps around
+            return
+        words = [int(w) for w in words]
         for i, w in enumerate(words):
-            a = addr + 4 * i
-            if ring:
-                a = self.RING_BASE + (a - self.RING_BASE) % self.RING_SIZE
-            a &= MEM_MASK
-            self.mem[a:a + 4] = self._swap(w, swap).to_bytes(4, 'little')
+            a = self.RING_BASE + (addr + 4 * i - self.RING_BASE) % self.RING_SIZE
+            self.mem[a:a + 4] = w.to_bytes(4, 'little')
         if ring:
             self.cp.extend(words)
             self.run_cp()

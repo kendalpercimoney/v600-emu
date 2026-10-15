@@ -11,7 +11,7 @@ ROUTINES = {
     0x2188: ('rom_2188_mode', 0),        # result compared with 2 at 0x1087102E / 0x108710C8
     0x37CE: ('rom_37ce_sec', 0),         # (0x11, buf, 0, r3, [sp]) security service
     0xFCDC: ('rom_fcdc_init', 0),        # first call of the boot sequence, no args
-    0xFFD0: ('rom_ffd0', 0),             # (0) -> u16
+    0xFFD0: ('dsp_queued', lambda m: m.audio.space()),       # (queue) -> words waiting
     0xFFF4: ('dsp_receive', lambda m: m.dspmsg.receive(m)),   # (queue, buf) -> 1 if a message
     0x100C2: ('dsp_receive2', lambda m: m.dspmsg.receive(m)),  # same; the audio reply receiver
     0x101CC: ('dsp_send', lambda m: m.dspmsg.send(m)),        # (type, buf, nwords, flag) -> 1

@@ -85,7 +85,7 @@ const held = new Set();
 addEventListener('keydown', e => { const k = map[e.key]; if (!k || held.has(k)) return;
   held.add(k); e.preventDefault(); send(k, true); });
 addEventListener('keyup', e => { const k = map[e.key]; if (!k) return; held.delete(k); send(k, false); });
-// Sound: 8 kHz 16-bit PCM from /audio, queued back to back (browsers need a click first).
+// Sound: 16 kHz 16-bit PCM from /audio (v600/midi.py RATE), queued back to back (browsers need a click first).
 let actx = null, playAt = 0;
 const soundBtn = document.getElementById('sound');
 soundBtn.onclick = () => {
@@ -96,7 +96,7 @@ setInterval(async () => {
   if (!actx) return;
   const pcm = new Int16Array(await (await fetch('/audio')).arrayBuffer());
   if (!actx || !pcm.length || pcm.every(v => v === 0)) return;
-  const buf = actx.createBuffer(1, pcm.length, 8000), ch = buf.getChannelData(0);
+  const buf = actx.createBuffer(1, pcm.length, 16000), ch = buf.getChannelData(0);
   for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
   const src = actx.createBufferSource();
   src.buffer = buf; src.connect(actx.destination);

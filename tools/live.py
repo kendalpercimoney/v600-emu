@@ -118,7 +118,7 @@ class Phone:
             self.saved_writes = f.writes
 
     def sound(self):
-        """PCM (8 kHz, 16-bit little-endian) made since the last call. No lock: the emulator
+        """PCM (16 kHz, 16-bit little-endian) made since the last call. No lock: the emulator
         thread retakes it at once while catching up, which would starve this request."""
         return self.m.audio.pull()
 

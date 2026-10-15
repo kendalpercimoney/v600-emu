@@ -5,12 +5,14 @@ in the Neptune's mask ROM, which we do not have.
 Messages go through boot-ROM routines (see bootrom.py):
   0xFFF4  receive(queue, buf) -> 1 if a message was copied into buf (16-bit words)
   0x100C2 the same (used by the audio reply receiver 0x106939B0)
+  0xFFD0  queued(queue) -> words waiting in the DSP's data queue (type 0 sends)
   0x101CC send(type, buf, nwords, flag) -> 1 on success
 
 Boot handshake (0x1064E8BC): after the DSP code download the DSP posts 0xA080 ("alive") on
 queue 0xD; the MCU sends type 0xC [0x2080, 0]; the DSP answers 0xA081 with its ROM version in
 word 2. The MCU picks DSP patches by version from the table at 0x10040010 (only 0x62D5 there).
-Type 8 messages are audio commands, handled by audio.py; their replies go on queue 0xB.
+Type 8 messages are audio commands and type 0 the media data they play, both handled by
+audio.py; replies go on queue 0xB.
 
 Replies on queue 0xB reach the audio manager through MDI general interrupt 0: its handler
 (0x10AD3364, AITC source 17) clears MSR bit 11 and, if the queue's two indices in shared
@@ -30,14 +32,19 @@ class MDI:
     +2 MCVR, +4 MCR (bit 7: hold the DSP in reset during the download, 0x10AD5B90), +6 MSR,
     +8/+A MTR1/0 (to the DSP), +C/+E MRR1/0 (from the DSP).
     MSR reads with both receive registers full (bits 15/14) and MRR0 = 0x8001 ("block OK"):
-    what the code download waits for. MSR bit 11 is general interrupt 0 (write 1 to clear)."""
+    what the code download waits for. MSR bit 11 is general interrupt 0 (write 1 to clear).
+    A word the DSP puts in MRR0 raises AITC source 42; its handler (0x10AD339E) passes it to
+    the data callbacks registered with MME_FW_MDI (0x10AE73E6): 0x8002 asks the MIDI filter
+    for more data. Reading MRR0 takes the word."""
     MSR, MRR0 = 0x6, 0xE
     MGIP0 = 1 << 11
+    RECEIVE_SOURCE = 42
 
     def __init__(self, m):
         self.m = m
         self.regs = bytearray(0x10)
         self.msr = 0xC000
+        self.mrr0 = None                # word from the DSP, until read
 
     def read(self, off, size):
         if size == 4:
@@ -45,7 +52,11 @@ class MDI:
         if off == self.MSR:
             return self.msr
         if off == self.MRR0:
-            return 0x8001
+            if self.mrr0 is None:
+                return 0x8001
+            v, self.mrr0 = self.mrr0, None
+            self.m.aitc.set_line(self.RECEIVE_SOURCE, False)
+            return v
         return int.from_bytes(self.regs[off:off + 2], 'big')
 
     def write(self, off, size, value):
@@ -57,6 +68,11 @@ class MDI:
             self._line()
         else:
             self.regs[off:off + size] = value.to_bytes(size, 'big')
+
+    def receive(self, word):
+        """The DSP writes MRR0."""
+        self.mrr0 = word
+        self.m.aitc.set_line(self.RECEIVE_SOURCE, True)
 
     def general_interrupt(self):
         self.msr |= self.MGIP0
@@ -102,6 +118,9 @@ class DSPMessages:
         self.sent += 1
         if typ == 8:
             m.audio.command(words)
+            return 1
+        if typ == 0:
+            m.audio.data(words)
             return 1
         if self.sent <= 40:
             m.log(f'  mcu -> dsp type {typ:#x}: {" ".join(f"{w:04x}" for w in words[:16])}')

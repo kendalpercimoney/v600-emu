@@ -8,6 +8,7 @@ from .flash import Flash
 from .irq import AITC, OSTimer
 from .ati import ATIChip, ATISerialPort
 from .camera import MT9V111
+from .network import Network
 from .periph import (DMA, FreeRunCounter, EdgePort, Keypad, OneWire,
                      PowerIC, QSPI, Regs)
 
@@ -86,7 +87,7 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     ostimer = OSTimer(m, m.aitc, m.counter)
     m.attach(0x24848000, 0x40, ostimer)
     m.timers.append(ostimer)
-    m.hook(IDLE_LOW_POWER, lambda m: setattr(m, 'idle_hint', True), once_per_slice=True)
+    m.hook(IDLE_LOW_POWER, lambda m: m.at_idle(), once_per_slice=True)
     m.plain(0x2484502C)                 # low-power mode: written and read on every idle pass
     # Unidentified unit at 0x24845000: +0x18 data, +0x10 bit 8 = start/busy (self-clearing).
     m.attach(0x24845000, 0x1000, Regs(0x1000, selfclear={0x10: 0x100}))
@@ -120,4 +121,6 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     m.attach(0x24856000, 0x8, m.onewire)
     make_pds(m, pds_barker)
     overrides.install(m, sim_card=sim_card)
+    m.network = Network(m, CPU_IPS)
+    m.timers.append(m.network)
     return m

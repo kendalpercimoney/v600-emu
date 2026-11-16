@@ -12,6 +12,7 @@ FLASH = (0x10000000, 0x2000000)
 MMIO = (0x20000000, 0x10000000)
 CPSR_E = 0x200              # Unicorn does big-endian data via CPSR.E: keep it set on every write
 ENTRY = 0x106289BE          # Thumb; from header word 0 of the main code group
+CALL_RETURN = 0x1F000       # where functions started by Machine.call() return to
 
 REGS = [UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_R4,
         UC_ARM_REG_R5, UC_ARM_REG_R6, UC_ARM_REG_R7, UC_ARM_REG_R8, UC_ARM_REG_R9,
@@ -51,6 +52,10 @@ class Machine:
         self.iram_breakpoints = False                # some live in IRAM: check them (replant)
         self.once_per_slice = set()                  # hook(once_per_slice=True) addresses
         self.lifted = []                             # ... whose instruction is back for now
+        self.pending_calls = collections.deque()             # call(): (fn, args, then) waiting for idle
+        self.call_context = None                     # registers of the idle task during a call
+        uc.mem_write(CALL_RETURN, bytes.fromhex('4770'))
+        self.hook(CALL_RETURN, Machine._call_returned)
         self.stopped = None                          # set by hooks to end run()
         self.insns = 0                               # virtual clock: instructions executed
         self.aitc = None                             # interrupt controller (board.py)
@@ -182,6 +187,41 @@ class Machine:
                     t.update()
         self.idle_hint = False
         deliver(self)
+
+    # ---- calling firmware functions ---------------------------------------------------
+    def call(self, fn, args=(), then=None):
+        """Have the firmware run fn(*args) (Thumb, up to 4 arguments) from its idle task the
+        next time the OS idles; then(machine, r0) gets the result and may queue more calls,
+        which run before the idle task continues. For posting OS messages to the phone's
+        tasks (see network.py): idle is a safe point, outside the kernel and interrupts."""
+        self.pending_calls.append((fn, args, then))
+
+    def at_idle(self):
+        """The idle loop is about to enter low-power wait (board.py hooks it)."""
+        self.idle_hint = True
+        if self.pending_calls and self.call_context is None:
+            self.call_context = [self.uc.reg_read(r) for r in REGS + [UC_ARM_REG_CPSR]]
+            self._start_call()
+
+    def _start_call(self):
+        fn, args, self.call_then = self.pending_calls.popleft()
+        for r, v in zip(REGS, args):
+            self.uc.reg_write(r, v)
+        self.uc.reg_write(UC_ARM_REG_LR, CALL_RETURN | 1)
+        self.uc.reg_write(UC_ARM_REG_PC, fn | 1)
+
+    def _call_returned(self):
+        if self.call_then:
+            self.call_then(self, self.r(0))
+        if self.pending_calls:
+            self._start_call()
+            return
+        *regs, cpsr = self.call_context
+        self.call_context = None
+        self.uc.reg_write(UC_ARM_REG_CPSR, cpsr)
+        for r, v in zip(REGS[:-1], regs):
+            self.uc.reg_write(r, v)
+        self.uc.reg_write(UC_ARM_REG_PC, regs[-1] | (1 if cpsr & 0x20 else 0))
 
     def stop(self, why):
         self.stopped = why

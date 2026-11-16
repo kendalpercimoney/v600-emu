@@ -2,13 +2,10 @@
 from . import bootrom, overrides
 from .audio import AudioDSP
 from .dsp import MDI, DSPMessages
-from .devices import (AITC, EdgePort, FreeRunCounter, Keypad, OneWire, OSTimer, Regs,
-                      SIMInterface)
+from .devices import (AITC, ATIChip, DMA, EdgePort, FreeRunCounter, Keypad, OneWire,
+                      OSTimer, PowerIC, QSPI, Regs, SIMInterface)
 from .flash import Flash
-from .ati import ATIChip, ATISerialPort
-from .camera import MT9V111
 from .network import Network
-from .periph import DMA, PowerIC, QSPI
 
 # Power-IC register 23 is VENDOR_REV (PCAP2, Linux ezx-pcap.h), read as signal 0xE7 by the
 # board-variant probe (0x10628B1C). Real value unknown. Non-zero low bits select a real phone profile (IDs 1/2) instead of the
@@ -63,15 +60,15 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     m.dspmsg = DSPMessages(m)
     m.audio = AudioDSP(m, CPU_IPS)
     m.flash = Flash(m)
-    m.pmic = PowerIC(m.log)
-    m.pmic.regs[23] = PMIC_VENDOR_REV
-    m.pmic.regs[0] = PMIC_ISR_POWER_KEY
+    m.pmic = PowerIC()
+    m.pmic.set_reg(23, PMIC_VENDOR_REV)
+    m.pmic.set_reg(0, PMIC_ISR_POWER_KEY)
     # QSPI devices, keyed by the driver's device descriptor (see QSPI.queue_for)
     # cs6: the ATI Imageon's serial host interface (CHIP_ID: device 0x5745, ATI vendor 0x1002;
     # the driver accepts 0x5641-7 / 0x5741-7 but its frame-buffer setup needs 0x5645 / 0x5745).
-    m.ati = ATIChip(m.log)
-    m.ati.i2c.devices[MT9V111.ADDRESS] = MT9V111()
-    m.qspi = QSPI(m, {0x10800562: m.pmic, 0x1080058C: ATISerialPort(m.ati)}, m.log)
+    # The camera sensor (MT9V111) sits on the chip's I2C bus (core/ati.c).
+    m.ati = ATIChip()
+    m.qspi = QSPI(m, m.pmic, m.ati)
     m.attach(0x24851000, 0x1000, m.qspi)
     m.mdi = MDI(m)
     m.attach(0x2485BFF0, 0x10, m.mdi)
@@ -80,7 +77,7 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     m.attach(0x2484A000, 0x8, m.counter)
     m.aitc = AITC(m)
     m.attach(0x29890000, 0x100, m.aitc)
-    m.dma = DMA(m, m.aitc, m.ati, m.log)
+    m.dma = DMA(m, m.ati)
     m.attach(0x24854000, 0x40, m.dma)
     ostimer = OSTimer(m)
     m.attach(0x24848000, 0x40, ostimer)
@@ -103,7 +100,7 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     # External interrupt pins, idle high (pulled up). INT0 = HS_INT (flip / headset detect).
     m.edgeport = EdgePort(m)
     set_flip(m, flip_open)
-    m.pmic.on_int = lambda level: m.edgeport.set_pin(1, level)
+    m.pmic.connect(m.edgeport)
     m.edgeport.set_pin(1, m.pmic.int_level())
     m.attach(0x2484C000, 0x8, m.edgeport)
     # One-wire bus to the battery's ID EPROM (DS2502).

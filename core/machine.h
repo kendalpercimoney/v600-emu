@@ -82,6 +82,19 @@ typedef struct {
     uint32_t ctrl, div;
 } onewire_t;
 
+/* -- graphics chip (ati.c), its outer display; DMA (dma.c); QSPI + power IC (qspi.c) -- */
+#define OUTER_WIDTH 96
+#define OUTER_PAGES 4
+typedef struct {
+    uint8_t pixels[OUTER_PAGES * 8 * OUTER_WIDTH];   /* 1 = lit, row-major, 32 x 96 */
+    int page, column, mirrored;
+    uint64_t updates;                                /* to tell when the picture changed */
+} outer_t;
+typedef struct ati ati_t;
+typedef struct dma dma_t;
+typedef struct qspi qspi_t;
+typedef struct pmic pmic_t;
+
 /* -- NOR flash (flash.c), SIM interface + card (sim.c) -- */
 typedef struct flash flash_t;
 typedef struct sim sim_t;
@@ -136,6 +149,23 @@ flash_t    *flash_new(machine_t *);
 void        flash_flush(flash_t *);
 int         flash_idle(flash_t *);
 uint64_t    flash_writes(flash_t *);
+ati_t      *ati_new(void);
+uint32_t    ati_read32(ati_t *, uint32_t addr);
+void        ati_write32(ati_t *, uint32_t addr, uint32_t value);
+void        ati_write_block(ati_t *, uint32_t addr, const uint32_t *words, int n);
+void        ati_write_tail(ati_t *, uint32_t addr, const uint8_t *data, int n);
+int         ati_serial_transfer(ati_t *, const uint8_t *data, int n, uint8_t *out);
+uint8_t    *ati_mem(ati_t *);
+uint32_t    ati_reg(ati_t *, uint32_t r);
+uint64_t    ati_draws(ati_t *);
+outer_t    *ati_outer(ati_t *);
+dma_t      *dma_new(machine_t *, ati_t *);
+pmic_t     *pmic_new(void);
+void        pmic_set_reg(pmic_t *, int reg, uint32_t v);
+void        pmic_connect(pmic_t *, edgeport_t *int_pin);
+int         pmic_int_level(pmic_t *);
+void        pmic_power_key(pmic_t *, int down);
+qspi_t     *qspi_new(machine_t *, pmic_t *, ati_t *);
 sim_t      *sim_new(machine_t *, int with_card, double ips);
 void        sim_update(sim_t *);
 double      sim_next_event(sim_t *);              /* counter units, or -1 */

@@ -3,6 +3,9 @@
 Each object's `cdev` is the C device pointer that Machine.attach() puts on the bus."""
 import ctypes
 
+import numpy as np
+from PIL import Image
+
 from .core import Core
 
 p, u32, u64, i, dbl = ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint64, ctypes.c_int, ctypes.c_double
@@ -36,7 +39,13 @@ def _lib():
                 ('flash_new', p, [p]), ('flash_flush', None, [p]), ('flash_idle', i, [p]),
                 ('flash_writes', u64, [p]),
                 ('sim_new', p, [p, i, dbl]), ('sim_update', None, [p]),
-                ('sim_next_event', dbl, [p])]:
+                ('sim_next_event', dbl, [p]),
+                ('ati_new', p, []), ('ati_mem', p, [p]), ('ati_reg', u32, [p, u32]),
+                ('ati_draws', u64, [p]), ('ati_outer', p, [p]),
+                ('dma_new', p, [p, p]), ('pmic_new', p, []),
+                ('pmic_set_reg', None, [p, i, u32]), ('pmic_connect', None, [p, p]),
+                ('pmic_int_level', i, [p]), ('pmic_power_key', None, [p, i]),
+                ('qspi_new', p, [p, p, p])]:
             f = getattr(lib, name)
             f.restype, f.argtypes = res, args
         lib._devices_declared = True
@@ -149,3 +158,89 @@ class SIMInterface:
     def next_event(self):
         v = self.lib.sim_next_event(self.cdev)
         return None if v < 0 else v
+
+
+# -- graphics: chip (ati.c), DMA (dma.c), QSPI and the power IC (qspi.c) -------------------
+MEM_SIZE = 0x400000
+GRAPHIC_OFFSET, GRAPHIC_PITCH, GRAPHIC_H_DISP, GRAPHIC_V_DISP = 0x418, 0x41C, 0x42C, 0x430
+
+
+class _OuterState(ctypes.Structure):
+    _fields_ = [('pixels', ctypes.c_uint8 * (32 * 96)), ('page', i), ('column', i),
+                ('mirrored', i), ('updates', u64)]
+
+
+class OuterDisplay:
+    """The 96 x 32 display on the outside of the flip (fed by the graphics chip)."""
+    def __init__(self, ptr):
+        self.state = ctypes.cast(ptr, ctypes.POINTER(_OuterState)).contents
+        self.pixels = np.ctypeslib.as_array(self.state.pixels).reshape(32, 96)
+
+    @property
+    def updates(self):
+        return self.state.updates
+
+    def image(self, on=(20, 30, 60), off=(150, 190, 215)):
+        rgb = np.where(self.pixels[:, :, None] != 0, np.array(on, np.uint8), np.array(off, np.uint8))
+        return Image.fromarray(rgb.astype(np.uint8))
+
+
+class ATIChip:
+    """The ATI Imageon graphics chip (with its camera I2C bus and the outer display)."""
+    def __init__(self):
+        self.lib = _lib()
+        self.cdev_chip = self.lib.ati_new()
+        ptr = ctypes.cast(self.lib.ati_mem(self.cdev_chip), ctypes.POINTER(ctypes.c_uint8))
+        self.mem = np.ctypeslib.as_array(ptr, shape=(MEM_SIZE,))     # live view of chip memory
+        self.outer = OuterDisplay(self.lib.ati_outer(self.cdev_chip))
+
+    @property
+    def draws(self):
+        """Drawing operations so far, to detect new frames."""
+        return self.lib.ati_draws(self.cdev_chip)
+
+    def reg(self, r):
+        return self.lib.ati_reg(self.cdev_chip, r)
+
+    def screen(self):
+        """The displayed frame (GRAPHIC_OFFSET, GRAPHIC_PITCH bytes per row) as RGB."""
+        base = self.reg(GRAPHIC_OFFSET)
+        pitch = self.reg(GRAPHIC_PITCH) or 0x160
+        w = (self.reg(GRAPHIC_H_DISP) >> 16) or 176
+        h = (self.reg(GRAPHIC_V_DISP) >> 16) or 220
+        rows = [bytes(self.mem[base + y * pitch: base + y * pitch + 2 * w]) for y in range(h)]
+        a = np.frombuffer(b''.join(rows), dtype='<u2').reshape(h, w)
+        rgb = np.dstack([((a >> 11) & 31) * 255 // 31, ((a >> 5) & 63) * 255 // 63,
+                         (a & 31) * 255 // 31]).astype(np.uint8)
+        return Image.fromarray(rgb)
+
+
+class DMA:
+    def __init__(self, m, chip):
+        self.cdev = _lib().dma_new(m.c, chip.cdev_chip)
+
+
+class PowerIC:
+    """PCAP2 power IC on the QSPI: registers, ADC, the power (red) key."""
+    def __init__(self):
+        self.lib = _lib()
+        self.cpmic = self.lib.pmic_new()
+
+    def set_reg(self, reg, value):
+        self.lib.pmic_set_reg(self.cpmic, reg, value)
+
+    def connect(self, edgeport):
+        """Its interrupt pin drives edge port INT1."""
+        self.lib.pmic_connect(self.cpmic, edgeport.cdev)
+
+    def int_level(self):
+        return bool(self.lib.pmic_int_level(self.cpmic))
+
+    def power_key(self, down):
+        self.lib.pmic_power_key(self.cpmic, 1 if down else 0)
+
+
+class QSPI:
+    """Queued SPI controller: the power IC and the graphics chip's serial interface."""
+    def __init__(self, m, pmic, chip):
+        self.cdev = _lib().qspi_new(m.c, pmic.cpmic, chip.cdev_chip)

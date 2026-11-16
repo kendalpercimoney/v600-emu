@@ -1,9 +1,7 @@
 """Wires the peripheral models onto a Machine."""
 from . import bootrom, overrides
-from .audio import AudioDSP
-from .dsp import MDI, DSPMessages
-from .devices import (AITC, ATIChip, DMA, EdgePort, FreeRunCounter, Keypad, OneWire,
-                      OSTimer, PowerIC, QSPI, Regs, SIMInterface)
+from .devices import (AITC, ATIChip, AudioDSP, DMA, DSPMessages, EdgePort, FreeRunCounter,
+                      Keypad, OneWire, OSTimer, PowerIC, QSPI, Regs, SIMInterface)
 from .flash import Flash
 from .network import Network
 
@@ -58,7 +56,7 @@ def make_pds(m, barker=PDS_BARKER):
 def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     bootrom.install(m)
     m.dspmsg = DSPMessages(m)
-    m.audio = AudioDSP(m, CPU_IPS)
+    m.audio = AudioDSP(m, m.dspmsg, CPU_IPS)
     m.flash = Flash(m)
     m.pmic = PowerIC()
     m.pmic.set_reg(23, PMIC_VENDOR_REV)
@@ -70,8 +68,7 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     m.ati = ATIChip()
     m.qspi = QSPI(m, m.pmic, m.ati)
     m.attach(0x24851000, 0x1000, m.qspi)
-    m.mdi = MDI(m)
-    m.attach(0x2485BFF0, 0x10, m.mdi)
+    m.attach(0x2485BFF0, 0x10, m.dspmsg)           # the MDI registers (core/dsp.c)
     ticks_per_insn = (1 << 19) / (TIME_UNIT_US * 1e-6 * CPU_IPS)
     m.counter = FreeRunCounter(m, ticks_per_insn)
     m.attach(0x2484A000, 0x8, m.counter)

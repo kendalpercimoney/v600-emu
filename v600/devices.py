@@ -45,7 +45,16 @@ def _lib():
                 ('dma_new', p, [p, p]), ('pmic_new', p, []),
                 ('pmic_set_reg', None, [p, i, u32]), ('pmic_connect', None, [p, p]),
                 ('pmic_int_level', i, [p]), ('pmic_power_key', None, [p, i]),
-                ('qspi_new', p, [p, p, p])]:
+                ('qspi_new', p, [p, p, p]),
+                ('dsp_new', p, [p]), ('dsp_receive', i, [p, u32, u32]),
+                ('dsp_send', i, [p, u32, u32, u32]),
+                ('audio_new', p, [p, p, u64]), ('audio_space', i, [p]),
+                ('audio_update', None, [p]), ('audio_next_event', dbl, [p]),
+                ('audio_pull', i, [p, ctypes.POINTER(ctypes.c_int64), p, i]),
+                ('audio_events', i, [p]),
+                ('audio_event', ctypes.c_int64, [p, i, ctypes.POINTER(i), ctypes.POINTER(i),
+                                                 ctypes.POINTER(ctypes.c_int64), p, ctypes.c_int64]),
+                ('audio_events_clear', None, [p])]:
             f = getattr(lib, name)
             f.restype, f.argtypes = res, args
         lib._devices_declared = True
@@ -244,3 +253,62 @@ class QSPI:
     """Queued SPI controller: the power IC and the graphics chip's serial interface."""
     def __init__(self, m, pmic, chip):
         self.cdev = _lib().qspi_new(m.c, pmic.cpmic, chip.cdev_chip)
+
+
+# -- sound: the DSP's message queues and MDI registers (dsp.c), its audio side (audio.c) -----
+RATE = 16000                            # PCM sample rate of AudioDSP.pull()
+
+
+class DSPMessages:
+    """The DSP's message queues (boot-ROM receive / send, see bootrom.py) and the MDI
+    registers: put it on the bus at 0x2485BFF0."""
+    def __init__(self, m):
+        self.lib = _lib()
+        self.cdev = self.lib.dsp_new(m.c)
+
+    def receive(self, m):
+        return self.lib.dsp_receive(self.cdev, m.r(0), m.r(1))
+
+    def send(self, m):
+        return self.lib.dsp_send(self.cdev, m.r(0), m.r(1), m.r(2))
+
+
+class AudioDSP:
+    """What the DSP is asked to play, as PCM; a machine timer. pull() and media_events()
+    may be called from another thread (the C side locks)."""
+    def __init__(self, m, dsp, ips):
+        self.lib = _lib()
+        self.ca = self.lib.audio_new(m.c, dsp.cdev, ips)
+        self._buf = (ctypes.c_int16 * (RATE + 16))()
+
+    def space(self):
+        return self.lib.audio_space(self.ca)
+
+    def update(self):
+        self.lib.audio_update(self.ca)
+
+    def next_event(self):
+        v = self.lib.audio_next_event(self.ca)
+        return None if v < 0 else v
+
+    def pull(self):
+        """(first sample index, 16-bit little-endian mono PCM at RATE) since the last pull."""
+        start = ctypes.c_int64()
+        n = self.lib.audio_pull(self.ca, ctypes.byref(start), self._buf, RATE + 16)
+        return start.value, bytes(np.frombuffer(self._buf, '<i2', n))
+
+    def media_events(self):
+        """Clips started or stopped since the last call: ('start', id, sample, mime, bytes)
+        or ('stop', id, sample)."""
+        out = []
+        kind, ident, at = i(), i(), ctypes.c_int64()
+        for k in range(self.lib.audio_events(self.ca)):
+            n = self.lib.audio_event(self.ca, k, kind, ident, at, None, 0)
+            if kind.value:
+                data = ctypes.create_string_buffer(max(n, 1))
+                self.lib.audio_event(self.ca, k, kind, ident, at, data, n)
+                out.append(('start', ident.value, at.value, 'audio/mpeg', data.raw[:n]))
+            else:
+                out.append(('stop', ident.value, at.value))
+        self.lib.audio_events_clear(self.ca)
+        return out

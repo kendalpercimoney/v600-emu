@@ -94,6 +94,8 @@ typedef struct ati ati_t;
 typedef struct dma dma_t;
 typedef struct qspi qspi_t;
 typedef struct pmic pmic_t;
+typedef struct dsp dsp_t;           /* MDI registers + message queues (dsp.c) */
+typedef struct audio audio_t;       /* the DSP's audio side (audio.c) */
 
 /* -- NOR flash (flash.c), SIM interface + card (sim.c) -- */
 typedef struct flash flash_t;
@@ -166,6 +168,22 @@ void        pmic_connect(pmic_t *, edgeport_t *int_pin);
 int         pmic_int_level(pmic_t *);
 void        pmic_power_key(pmic_t *, int down);
 qspi_t     *qspi_new(machine_t *, pmic_t *, ati_t *);
+dsp_t      *dsp_new(machine_t *);
+void        dsp_set_audio(dsp_t *, audio_t *);
+void        dsp_post(dsp_t *, int q, const uint16_t *words, int n);
+void        dsp_mdi_receive(dsp_t *, uint32_t word);
+int         dsp_receive(dsp_t *, uint32_t q, uint32_t buf);
+int         dsp_send(dsp_t *, uint32_t type, uint32_t buf, uint32_t n);
+audio_t    *audio_new(machine_t *, dsp_t *, uint64_t ips);
+void        audio_command(audio_t *, const uint16_t *w, int n);
+void        audio_data(audio_t *, const uint16_t *w, int n);
+int         audio_space(audio_t *);
+void        audio_update(audio_t *);
+double      audio_next_event(audio_t *);          /* counter units, or -1 */
+int         audio_pull(audio_t *, int64_t *start, int16_t *out, int max);
+int         audio_events(audio_t *);
+int64_t     audio_event(audio_t *, int i, int *kind, int *id, int64_t *at, uint8_t *data, int64_t max);
+void        audio_events_clear(audio_t *);
 sim_t      *sim_new(machine_t *, int with_card, double ips);
 void        sim_update(sim_t *);
 double      sim_next_event(sim_t *);              /* counter units, or -1 */

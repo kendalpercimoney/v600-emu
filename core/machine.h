@@ -82,6 +82,9 @@ typedef struct {
     uint32_t ctrl, div;
 } onewire_t;
 
+/* -- NOR flash (flash.c) -- */
+typedef struct flash flash_t;
+
 struct machine {
     arm_t *cpu;
     uint64_t insns;                 /* virtual clock: instructions executed */
@@ -128,5 +131,9 @@ ds2502_t   *ds2502_new(const uint8_t serial[6], const uint8_t memory[128]);
 int         ds2502_reset(ds2502_t *);
 int         ds2502_bit(ds2502_t *, int v);
 onewire_t  *onewire_new(machine_t *, ds2502_t *);
+flash_t    *flash_new(machine_t *);
+void        flash_flush(flash_t *);
+int         flash_idle(flash_t *);
+uint64_t    flash_writes(flash_t *);
 
 #endif

@@ -32,7 +32,9 @@ def _lib():
                 ('keypad_new', p, [p]), ('keypad_press', None, [p, i, i]),
                 ('edgeport_new', p, [p]), ('edgeport_set_pin', None, [p, i, i]),
                 ('ds2502_new', p, [ctypes.c_char_p, ctypes.c_char_p]),
-                ('onewire_new', p, [p, p])]:
+                ('onewire_new', p, [p, p]),
+                ('flash_new', p, [p]), ('flash_flush', None, [p]), ('flash_idle', i, [p]),
+                ('flash_writes', u64, [p])]:
             f = getattr(lib, name)
             f.restype, f.argtypes = res, args
         lib._devices_declared = True

@@ -1,11 +1,11 @@
 """The emulated V600: CPU, memory map and the MMIO dispatcher."""
 import collections
-import os
-from unicorn import (Uc, UcError, UC_ARCH_ARM, UC_MODE_ARM, UC_MODE_BIG_ENDIAN, UC_HOOK_INTR,
-                     UC_HOOK_MEM_UNMAPPED, UC_HOOK_CODE, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE)
+from unicorn import UcError, UC_HOOK_INTR, UC_HOOK_MEM_UNMAPPED, UC_HOOK_CODE
 from unicorn.arm_const import *
 
 from . import superfile
+from .core import Core
+from .devices import HOST_DEVICE, Trace, _lib
 
 IRAM = (0x03FC0000, 0x40000)
 RAM = (0x12000000, 0x400000)
@@ -24,12 +24,7 @@ REGS = [UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_R
 class Machine:
     def __init__(self, shx='firmware/v600.shx', log=print):
         self.log = log
-        if os.environ.get('V600_CPU') == 'c':          # the portable C core (core/, PORTING.md)
-            from .core import Core
-            self.uc = uc = Core()
-        else:
-            self.uc = uc = Uc(UC_ARCH_ARM, UC_MODE_ARM | UC_MODE_BIG_ENDIAN)
-        uc.ctl_set_cpu_model(UC_CPU_ARM_926)         # ARMv5: closest to the ARM7TDMI (v4T)
+        self.uc = uc = Core()                        # the C CPU (core/, PORTING.md)
         uc.mem_map(0, 0x20000)                       # vectors + boot ROM routines (stubbed, see bootrom.py)
         uc.mem_map(*IRAM)
         uc.mem_map(*RAM)
@@ -37,19 +32,15 @@ class Machine:
         uc.mem_write(FLASH[0], b'\xff' * FLASH[1])  # erased flash, incl. the missing bootloader
         for base, data in superfile.load(shx):
             uc.mem_write(base, bytes(data))
-        self.periph = {}                             # address -> model object (see attach)
-        self.mmio_log = collections.Counter()        # (kind, addr, size) -> count
-        self.mmio_trace = collections.deque(maxlen=64)
-        self.mmio_reads = 0
-        self.mmio_writes = 0                         # excluding watchdog service writes
-        self.verbose_mmio = True
-        # Unicorn's mmio_map mangles big-endian accesses, so MMIO is plain memory plus hooks:
-        # the read hook stores the model's value just before the load, unmodelled registers
-        # read back the last value written.
+        # MMIO is plain memory plus the bus in core/machine.c: models in C answer directly,
+        # the rest (host devices) through _host_device.
         uc.mem_map(*MMIO)
-        self.mmio_hooks = []
-        self.plain_words = []                        # MMIO words left as plain memory (plain())
-        self._hook_mmio()
+        self.lib = _lib()
+        self.c = self.lib.machine_new(uc.s, 0.0)
+        self.host_devices = []
+        self._host_cb = HOST_DEVICE(self._host_device)
+        self.lib.machine_set_host(self.c, self._host_cb)
+        self.verbose_mmio = False                    # (accesses are traced in C, not logged)
         uc.hook_add(UC_HOOK_MEM_UNMAPPED, self._unmapped)
         self.code_hooks = {}                         # addr -> (fn, Unicorn hook or None)
         self.breakpoints = {}                        # addr -> ([fn], original bytes, emulate)
@@ -72,57 +63,49 @@ class Machine:
 
     # ---- MMIO -------------------------------------------------------------
     def attach(self, base, size, model):
-        """Route [base, base+size) to model.read(off, size) / model.write(off, size, value)."""
-        for a in range(base, base + size, 4):
-            self.periph[a] = (base, model)
+        """Put a model on the bus at [base, base+size): a C device (devices.py, has cdev) or
+        a Python object with read(off, size) / write(off, size, value)."""
+        if hasattr(model, 'cdev'):
+            self.lib.machine_attach(self.c, base, size, model.cdev)
+        else:
+            self.lib.machine_attach_host(self.c, base, size, len(self.host_devices))
+            self.host_devices.append(model)
+
+    def _host_device(self, n, write, off, size, value):
+        model = self.host_devices[n]
+        if write:
+            model.write(off, size, value)
+            return 0
+        return model.read(off, size) & 0xFFFFFFFF
 
     def plain(self, addr, size=4):
-        """Leave [addr, addr+size) of MMIO as plain memory: no Python call per access. For
-        registers with no side effects that the firmware hits constantly (each access
-        through the hooks costs several microseconds)."""
-        self.plain_words.append((addr, addr + size))
-        self._hook_mmio()
+        """Leave [addr, addr+size) of MMIO as plain memory: not routed, not counted."""
+        self.lib.machine_plain(self.c, addr, size)
 
-    def _hook_mmio(self):
-        for h in self.mmio_hooks:
-            self.uc.hook_del(h)
-        self.mmio_hooks = []
-        start = MMIO[0]
-        for a, b in sorted(self.plain_words) + [(MMIO[0] + MMIO[1], None)]:
-            if a > start:
-                self.mmio_hooks += [
-                    self.uc.hook_add(UC_HOOK_MEM_READ, self._mmio_read, begin=start, end=a - 1),
-                    self.uc.hook_add(UC_HOOK_MEM_WRITE, self._mmio_write, begin=start, end=a - 1)]
-            start = b
+    @property
+    def insns(self):
+        """Virtual clock: instructions executed (kept in C, where the models read it)."""
+        return self.lib.machine_insns(self.c)
 
-    def _route(self, addr):
-        return self.periph.get(addr & ~3)
+    @insns.setter
+    def insns(self, v):
+        self.lib.machine_set_insns(self.c, v)
 
-    def _mmio_read(self, uc, access, addr, size, _value, _):
-        r = self._route(addr)
-        if r:
-            val = r[1].read(addr - r[0], size) & ((1 << (size * 8)) - 1)
-            uc.mem_write(addr, val.to_bytes(size, 'big'))
-        else:
-            val = int.from_bytes(uc.mem_read(addr, size), 'big')
-        self.mmio_reads += 1
-        self._note('R', addr, size, val)
+    @property
+    def mmio_reads(self):
+        return self.lib.machine_mmio_reads(self.c)
 
-    def _mmio_write(self, uc, access, addr, size, value, _):
-        value &= (1 << (size * 8)) - 1
-        if addr != 0x24849002:
-            self.mmio_writes += 1
-        r = self._route(addr)
-        if r:
-            r[1].write(addr - r[0], size, value)
-        self._note('W', addr, size, value)
+    @property
+    def mmio_writes(self):
+        """Excluding watchdog service writes."""
+        return self.lib.machine_mmio_writes(self.c)
 
-    def _note(self, kind, addr, size, val):
-        key = (kind, addr, size)
-        self.mmio_log[key] += 1
-        self.mmio_trace.append((self.pc(), kind, addr, size, val))
-        if self.verbose_mmio and self.mmio_log[key] <= 2:
-            self.log(f'  mmio {kind}{size * 8:<2} {addr:08x} = {val:08x}   pc={self.pc():08x}')
+    @property
+    def mmio_trace(self):
+        """The last MMIO accesses: (pc, kind, addr, size, value), oldest first."""
+        out = (Trace * 64)()
+        n = self.lib.machine_trace(self.c, out)
+        return [(t.pc, t.kind.decode(), t.addr, t.size, t.value) for t in out[:n]]
 
     def _unmapped(self, uc, access, addr, size, value, _):
         self.fault = (access, addr, size, value, self.pc())

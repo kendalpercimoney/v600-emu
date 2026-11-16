@@ -19,7 +19,6 @@ from pathlib import Path
 import numpy as np
 
 from drive import ROOT, boot, run_until, steps
-from lockstep import state
 from v600.board import CPU_IPS
 
 GOLDEN = ROOT / 'tests' / 'golden.jsonl'
@@ -27,6 +26,28 @@ EVERY = 0.25
 SESSION = ['45.0', 'menu', '+2.0', 'red', '+2.0', '5', '5', '5', '+0.5', 'green', '+8.0',
            'red', '+3.0', 'flip:0', '+3.0', 'flip:1', '+2.0']
 FIELDS = ['regs', 'ram', 'iram', 'ati', 'outer', 'sound']
+
+
+MODES = (0x10, 0x11, 0x12, 0x13, 0x17, 0x1B)
+
+
+def state(m):
+    """Registers (each mode's banked ones too) and the RAM contents."""
+    from unicorn.arm_const import UC_ARM_REG_CPSR, UC_ARM_REG_SPSR, UC_ARM_REG_SP, UC_ARM_REG_LR
+    from v600.machine import IRAM, RAM, REGS
+    uc = m.uc
+    cpsr = uc.reg_read(UC_ARM_REG_CPSR)
+    regs = {f'r{i}': uc.reg_read(r) for i, r in enumerate(REGS)}
+    regs['cpsr'] = cpsr
+    for mode in MODES:
+        uc.reg_write(UC_ARM_REG_CPSR, (cpsr & ~0x1F) | mode)
+        regs[f'sp_{mode:x}'] = uc.reg_read(UC_ARM_REG_SP)
+        regs[f'lr_{mode:x}'] = uc.reg_read(UC_ARM_REG_LR)
+        if mode != 0x10:
+            regs[f'spsr_{mode:x}'] = uc.reg_read(UC_ARM_REG_SPSR)
+    uc.reg_write(UC_ARM_REG_CPSR, cpsr)
+    mem = {name: bytes(uc.mem_read(*region)) for name, region in (('iram', IRAM), ('ram', RAM))}
+    return regs, mem
 
 
 def digest(m):

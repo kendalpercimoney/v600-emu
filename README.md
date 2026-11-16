@@ -36,6 +36,9 @@ The firmware is not included. You need your own V600 firmware dump as a Motorola
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
+The emulator core is C (`core/`); `./phone` builds it with `make` (Xcode command line tools
+or any C compiler).
+
 Then:
 
 ```bash

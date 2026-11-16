@@ -27,7 +27,7 @@ from PIL import Image  # noqa: E402
 from v600 import board, fwlog  # noqa: E402
 from v600.board import CPU_IPS  # noqa: E402
 from v600.machine import Machine  # noqa: E402
-from v600.periph import Keypad  # noqa: E402
+from v600.devices import Keypad  # noqa: E402
 
 
 def boot(state=False, log=False, verbose=False):

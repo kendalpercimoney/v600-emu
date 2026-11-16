@@ -3,14 +3,12 @@ from . import bootrom, overrides
 from .audio import AudioDSP
 from .dsp import MDI, DSPMessages
 from .sim import SIMCard, SIMInterface
-from .ds2502 import DS2502
+from .devices import AITC, EdgePort, FreeRunCounter, Keypad, OneWire, OSTimer, Regs
 from .flash import Flash
-from .irq import AITC, OSTimer
 from .ati import ATIChip, ATISerialPort
 from .camera import MT9V111
 from .network import Network
-from .periph import (DMA, FreeRunCounter, EdgePort, Keypad, OneWire,
-                     PowerIC, QSPI, Regs)
+from .periph import DMA, PowerIC, QSPI
 
 # Power-IC register 23 is VENDOR_REV (PCAP2, Linux ezx-pcap.h), read as signal 0xE7 by the
 # board-variant probe (0x10628B1C). Real value unknown. Non-zero low bits select a real phone profile (IDs 1/2) instead of the
@@ -84,13 +82,13 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     m.attach(0x29890000, 0x100, m.aitc)
     m.dma = DMA(m, m.aitc, m.ati, m.log)
     m.attach(0x24854000, 0x40, m.dma)
-    ostimer = OSTimer(m, m.aitc, m.counter)
+    ostimer = OSTimer(m)
     m.attach(0x24848000, 0x40, ostimer)
     m.timers.append(ostimer)
     m.hook(IDLE_LOW_POWER, lambda m: m.at_idle(), once_per_slice=True)
     m.plain(0x2484502C)                 # low-power mode: written and read on every idle pass
     # Unidentified unit at 0x24845000: +0x18 data, +0x10 bit 8 = start/busy (self-clearing).
-    m.attach(0x24845000, 0x1000, Regs(0x1000, selfclear={0x10: 0x100}))
+    m.attach(0x24845000, 0x1000, Regs(m, 0x1000, clear_word=0x10, clear_mask=0x100))
     # SIM card interface (SCIM) at 0x2484F000 (driver strings p/SCIM_EXT_PORT, p/dl_sim_mgr)
     # with a virtual SIM card in port 0 (sim.py). Without a card (sim_card=False) the card
     # reset/deactivate functions are overridden instead (overrides.py).
@@ -100,10 +98,10 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     m.timers.append(m.audio)
     # Keypad port. Unmodelled it read as all rows low = every key held, which the boot-time
     # 'user initiated panic' key check (0x10AE52B0) took as a request and reset the display.
-    m.keypad = Keypad(m.aitc)
+    m.keypad = Keypad(m)
     m.attach(0x2484E000, 0x10, m.keypad)
     # External interrupt pins, idle high (pulled up). INT0 = HS_INT (flip / headset detect).
-    m.edgeport = EdgePort(m.aitc)
+    m.edgeport = EdgePort(m)
     set_flip(m, flip_open)
     m.pmic.on_int = lambda level: m.edgeport.set_pin(1, level)
     m.edgeport.set_pin(1, m.pmic.int_level())
@@ -116,8 +114,7 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     battery_data = bytearray(128)
     battery_data[0x60:0x64] = b'COPR'
     battery_data[0x68:0x80] = b'MOTOROLA E.P CHARGE ONLY'
-    m.battery_id = DS2502(memory=battery_data, log=m.log)
-    m.onewire = OneWire(m.battery_id)
+    m.onewire = OneWire(m, battery_data)
     m.attach(0x24856000, 0x8, m.onewire)
     make_pds(m, pds_barker)
     overrides.install(m, sim_card=sim_card)

@@ -86,10 +86,16 @@ int arm_hook_add(arm_t *s, int kind, uint32_t begin, uint32_t end) {
         return -1;
     if (id == s->nhooks)
         s->nhooks++;
-    s->hooks[id] = (hook_t){kind, 1, begin, end};
+    s->hooks[id] = (hook_t){kind, 1, begin, end, 0, 0};
     if (kind & (HK_READ | HK_WRITE | HK_CODE))
         refresh_flags(s, kind, begin, end);
     recount(s);
+    return id;
+}
+
+int arm_hook_add_native(arm_t *s, int kind, uint32_t begin, uint32_t end, arm_native_fn fn, void *ctx) {
+    int id = arm_hook_add(s, kind, begin, end);
+    if (id >= 0) { s->hooks[id].fn = fn; s->hooks[id].ctx = ctx; }
     return id;
 }
 
@@ -104,8 +110,10 @@ void arm_hook_del(arm_t *s, int id) {
 
 static void call_hooks(arm_t *s, int kind, int access, uint32_t a, int n, uint32_t v) {
     for (int i = 0; i < s->nhooks; i++)
-        if (s->hooks[i].live && s->hooks[i].kind == kind && in_range(&s->hooks[i], a))
-            s->cb(s->host, i, access, a, n, v);
+        if (s->hooks[i].live && s->hooks[i].kind == kind && in_range(&s->hooks[i], a)) {
+            if (s->hooks[i].fn) s->hooks[i].fn(s->hooks[i].ctx, access, a, n, v);
+            else s->cb(s->host, i, access, a, n, v);
+        }
 }
 
 /* An access to unmapped memory: the hook may map it (nonzero: retry); else an error. */

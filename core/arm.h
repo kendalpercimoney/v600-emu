@@ -29,6 +29,9 @@ enum { REG_CPSR = 16, REG_SPSR = 17 };
    intno (HK_INTR, in addr). Returns nonzero from HK_UNMAPPED to retry the access. */
 typedef int (*arm_cb)(void *host, int id, int access, uint32_t addr, int size, uint32_t value);
 
+/* A hook handled in C (the machine's own devices): same arguments, no id. */
+typedef int (*arm_native_fn)(void *ctx, int access, uint32_t addr, int size, uint32_t value);
+
 arm_t   *arm_new(void);
 void     arm_free(arm_t *);
 void     arm_set_callback(arm_t *, arm_cb, void *host);
@@ -38,6 +41,8 @@ int      arm_mem_write(arm_t *, uint32_t addr, const uint8_t *in, uint32_t n);
 uint32_t arm_reg_read(arm_t *, int reg);
 void     arm_reg_write(arm_t *, int reg, uint32_t value);
 int      arm_hook_add(arm_t *, int kind, uint32_t begin, uint32_t end);  /* begin > end: all */
+int      arm_hook_add_native(arm_t *, int kind, uint32_t begin, uint32_t end,
+                            arm_native_fn fn, void *ctx);
 void     arm_hook_del(arm_t *, int id);
 /* Run from begin (bit 0 = Thumb) until PC == until, count instructions (0 = no limit),
    arm_stop() or an error; returns ERR_*. */

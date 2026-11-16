@@ -1,5 +1,5 @@
 #!/bin/sh
-# Motorola V600 emulator: ./phone [play | test | drive STEP... | help]
+# Motorola V600 emulator: ./phone [play | test | drive STEP... | check | help]
 cd "$(dirname "$0")" || exit 1
 PY=.venv/bin/python
 if [ ! -x "$PY" ]; then
@@ -10,14 +10,17 @@ if [ ! -f firmware/v600.shx ]; then
     echo "Put your V600 firmware superfile at firmware/v600.shx first."
     exit 1
 fi
+make -s || exit 1                  # the C core (core/), rebuilt when its sources change
 cmd=${1:-play}
 [ $# -gt 0 ] && shift
 case "$cmd" in
     play)  exec "$PY" tools/live.py --open "$@" ;;
     test)  exec "$PY" tools/selftest.py "$@" ;;
     drive) exec "$PY" tools/drive.py "$@" ;;
-    *)     echo "usage: ./phone [play | test | drive STEP... | help]"
+    check) exec "$PY" tools/golden.py check ;;
+    *)     echo "usage: ./phone [play | test | drive STEP... | check | help]"
            echo "  play   run the phone in your browser (its state is kept in state/flash.bin)"
            echo "  test   boot headless and check the main features, PASS/FAIL (about 30 s)"
-           echo "  drive  a scripted headless session, e.g.  ./phone drive 45.0 menu +2.0 shot:menu" ;;
+           echo "  drive  a scripted headless session, e.g.  ./phone drive 45.0 menu +2.0 shot:menu"
+           echo "  check  compare the whole machine with the golden trace (tests/golden.jsonl)" ;;
 esac

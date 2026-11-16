@@ -18,7 +18,7 @@ enum { PF_MAPPED = 1, PF_HREAD = 2, PF_HWRITE = 4, PF_HCODE = 8 };
 #define FLAG_V 0x10000000u
 #define T_BIT 0x20u
 
-typedef struct { int kind, live; uint32_t begin, end; } hook_t;
+typedef struct { int kind, live; uint32_t begin, end; arm_native_fn fn; void *ctx; } hook_t;
 
 struct arm {
     uint32_t r[16];                 /* r15 = address of the current / next instruction */

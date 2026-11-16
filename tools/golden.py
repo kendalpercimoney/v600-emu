@@ -1,17 +1,21 @@
-"""Golden trace: digests of the whole machine every 0.25 s through a scripted session, to
+"""Golden traces: digests of the whole machine every 0.25 s through scripted sessions, to
 check that a change (porting a chip model to C, PORTING.md phase 2) leaves the emulated
 phone exactly as it was.
 
-    .venv/bin/python tools/golden.py record     write tests/golden.jsonl (the reference)
-    .venv/bin/python tools/golden.py check      run again and compare, stop at the first
-                                                difference
+    .venv/bin/python tools/golden.py check [SESSION...]       compare with tests/golden/
+    .venv/bin/python tools/golden.py reference [SESSION...]   record from the reference
+    .venv/bin/python tools/golden.py record [SESSION...]      record from this tree
 
-The session: boot, menu, dial 555, a call answered and hung up, flip closed and opened.
-Each line: phone time, then CRC-32s of the registers (every mode), RAM, internal RAM, the
-graphics chip's memory, the outer display and the sound made since the last line.
-The reference is the commit tagged `py-reference` (all models in Python, on Unicorn).
+The reference is the commit tagged `py-reference` (every model in Python, on Unicorn):
+`reference` checks it out in build/reference (a git worktree) and records there.
+Sessions (SESSIONS below): `call` (boot, menu, dial 555, a call, the flip) and
+`ringtones` (the ring volume slider and the ringtone list: tones, MP3 and MIDI).
+Each line: phone time, then CRC-32s of the registers (every mode), RAM, internal RAM,
+graphics memory, outer display, the sound made since the last line and media clips.
 """
 import json
+import os
+import subprocess
 import sys
 import zlib
 from pathlib import Path
@@ -21,13 +25,23 @@ import numpy as np
 from drive import ROOT, boot, run_until, steps
 from v600.board import CPU_IPS
 
-GOLDEN = ROOT / 'tests' / 'golden.jsonl'
+GOLDEN = ROOT / 'tests' / 'golden'
 EVERY = 0.25
-SESSION = ['45.0', 'menu', '+2.0', 'red', '+2.0', '5', '5', '5', '+0.5', 'green', '+8.0',
-           'red', '+3.0', 'flip:0', '+3.0', 'flip:1', '+2.0']
-FIELDS = ['regs', 'ram', 'iram', 'ati', 'outer', 'sound']
-
-
+TO_SETTINGS = ['45.0', 'soft_right', '+2.0', 'soft_right', '+2.0', 'red', '+2.0', 'menu', '+2.5',
+               'down', 'down', 'right', 'right', '+1.0', 'ok', '+2.0']
+SESSIONS = {
+    'call': ['45.0', 'menu', '+2.0', 'red', '+2.0', '5', '5', '5', '+0.5', 'green', '+8.0',
+             'red', '+3.0', 'flip:0', '+3.0', 'flip:1', '+2.0'],
+    # Settings > Ring Styles > detail: the volume slider beeps, then the Line 1 list previews
+    # each ringtone as it is highlighted (tones, an MP3, then MIDI tunes)
+    'ringtones': TO_SETTINGS + ['down', '+1.0', 'ok', '+2.0',          # Ring Styles
+                                'down', '+1.0', 'ok', '+2.0',          # its detail list
+                                'ok', '+1.0', 'left', '+1.0', 'right', '+1.0',   # volume
+                                'soft_left', '+1.0',
+                                'down', '+1.0', 'ok', '+2.0']          # Line 1: the list
+                 + ['down', '+1.5'] * 22,
+}
+FIELDS = ['regs', 'ram', 'iram', 'ati', 'outer', 'sound', 'media']
 MODES = (0x10, 0x11, 0x12, 0x13, 0x17, 0x1B)
 
 
@@ -53,15 +67,19 @@ def state(m):
 def digest(m):
     regs, mem = state(m)
     crc = lambda b: zlib.crc32(b) & 0xFFFFFFFF
+    media = [[e[0], e[1], e[2]] + [crc(x) if isinstance(x, (bytes, bytearray)) else x for x in e[3:]]
+             for e in m.audio.media_events()]
     return [round(m.insns / CPU_IPS, 3),
             crc(json.dumps(regs, sort_keys=True).encode()), crc(mem['ram']), crc(mem['iram']),
-            crc(bytes(m.ati.mem)), crc(np.packbits(m.ati.outer.pixels).tobytes()),
-            crc(m.audio.pull()[1])]
+            crc(bytes(m.ati.mem)), crc(np.packbits(m.ati.outer.pixels != 0).tobytes()),
+            crc(m.audio.pull()[1]), crc(json.dumps(media).encode())]
 
 
-def session(m):
+def run(script):
     """Yield a digest every EVERY seconds of phone time and after each scripted action."""
-    for step in SESSION:
+    m = boot()
+    m.log = lambda *a: None
+    for step in script:
         now = m.insns / CPU_IPS
         if step[0] in '+0123456789' and '.' in step:
             end = now + float(step[1:]) if step[0] == '+' else float(step)
@@ -77,28 +95,54 @@ def session(m):
             yield digest(m)
 
 
+def check(name):
+    ref = [json.loads(line) for line in open(GOLDEN / f'{name}.jsonl')]
+    for i, d in enumerate(run(SESSIONS[name])):
+        if d != ref[i]:
+            bad = [f for f, a, b in zip(FIELDS, d[1:], ref[i][1:]) if a != b]
+            print(f'{name}: DIFFERENT at {d[0]}s (digest {i}): {", ".join(bad)}; '
+                  f'last match at {ref[i - 1][0] if i else 0}s')
+            return False
+    print(f'{name}: MATCH, {len(ref)} digests through {ref[-1][0]}s of phone time', flush=True)
+    return True
+
+
+def record(name, out):
+    with open(out, 'w') as f:
+        for d in run(SESSIONS[name]):
+            f.write(json.dumps(d) + '\n')
+    print(f'{name}: recorded {sum(1 for _ in open(out))} digests to {out}', flush=True)
+
+
+def reference(names):
+    """Record from the py-reference tag, checked out in build/reference."""
+    tree = ROOT / 'build' / 'reference'
+    if not tree.exists():
+        subprocess.run(['git', 'worktree', 'add', '--detach', str(tree), 'py-reference'],
+                       cwd=ROOT, check=True)
+    for tool in ('golden.py', 'drive.py'):           # this version of the tools
+        (tree / 'tools' / tool).write_text((ROOT / 'tools' / tool).read_text())
+    if not (tree / 'firmware').exists():
+        os.symlink(ROOT / 'firmware', tree / 'firmware')
+    GOLDEN.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        subprocess.run([sys.executable, 'tools/golden.py', 'record', f'--out={GOLDEN / name}.jsonl',
+                        name], cwd=tree, check=True)
+
+
 def main(argv):
     mode = argv[0] if argv else 'check'
-    m = boot()
-    m.log = lambda *a: None
-    if mode == 'record':
-        GOLDEN.parent.mkdir(exist_ok=True)
-        with open(GOLDEN, 'w') as f:
-            for d in session(m):
-                f.write(json.dumps(d) + '\n')
-        print(f'recorded {sum(1 for _ in open(GOLDEN))} digests to {GOLDEN.relative_to(ROOT)}')
+    out = next((a[6:] for a in argv if a.startswith('--out=')), None)
+    names = [a for a in argv[1:] if not a.startswith('--')] or list(SESSIONS)
+    if mode == 'reference':
+        reference(names)
         return 0
-    ref = [json.loads(line) for line in open(GOLDEN)]
-    for i, d in enumerate(session(m)):
-        if d != ref[i]:
-            bad = [name for name, a, b in zip(FIELDS, d[1:], ref[i][1:]) if a != b]
-            print(f'DIFFERENT at {d[0]}s (digest {i}, reference time {ref[i][0]}s): {", ".join(bad)}')
-            print(f'  last match at {ref[i - 1][0] if i else 0}s')
-            return 1
-        if i % 40 == 0:
-            print(f'{d[0]:7.2f}s  same', flush=True)
-    print(f'MATCH: {len(ref)} digests through {ref[-1][0]}s of phone time')
-    return 0
+    if mode == 'record':
+        GOLDEN.mkdir(parents=True, exist_ok=True)
+        for name in names:
+            record(name, out or GOLDEN / f'{name}.jsonl')
+        return 0
+    return 0 if all([check(name) for name in names]) else 1
 
 
 if __name__ == '__main__':

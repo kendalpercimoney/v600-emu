@@ -11,7 +11,11 @@ The reference is the commit tagged `py-reference` (every model in Python, on Uni
 Sessions (SESSIONS below): `call` (boot, menu, dial 555, a call, the flip) and
 `ringtones` (the ring volume slider and the ringtone list: tones, MP3 and MIDI).
 Each line: phone time, then CRC-32s of the registers (every mode), RAM, internal RAM,
-graphics memory, outer display, the sound made since the last line and media clips.
+graphics memory and outer display, the sound made since the last line as [samples, RMS],
+and a CRC-32 of the media clips (MP3 bytes included). All must match exactly except the
+RMS (within SOUND_TOLERANCE): the synthesis uses numpy's sin / exp and random numbers in
+the reference, C's in the port, so samples may differ in the last bits; everything the
+CPU can observe (replies, their timing) is exact.
 """
 import json
 import os
@@ -42,6 +46,7 @@ SESSIONS = {
                  + ['down', '+1.5'] * 22,
 }
 FIELDS = ['regs', 'ram', 'iram', 'ati', 'outer', 'sound', 'media']
+SOUND_TOLERANCE = 0.15                  # relative RMS difference (and 64 absolute)
 MODES = (0x10, 0x11, 0x12, 0x13, 0x17, 0x1B)
 
 
@@ -72,7 +77,26 @@ def digest(m):
     return [round(m.insns / CPU_IPS, 3),
             crc(json.dumps(regs, sort_keys=True).encode()), crc(mem['ram']), crc(mem['iram']),
             crc(bytes(m.ati.mem)), crc(np.packbits(m.ati.outer.pixels != 0).tobytes()),
-            crc(m.audio.pull()[1]), crc(json.dumps(media).encode())]
+            loudness(m.audio.pull()[1]), crc(json.dumps(media).encode())]
+
+
+def loudness(pcm):
+    x = np.frombuffer(pcm, '<i2').astype(float)
+    return [len(x), int(np.sqrt(np.mean(x * x))) if len(x) else 0]
+
+
+def same(a, b):
+    """Digests a (this run) and b (reference) agree; the fields that differ otherwise."""
+    bad = []
+    for f, x, y in zip(FIELDS, a[1:], b[1:]):
+        if f == 'sound':
+            if x[0] != y[0] or abs(x[1] - y[1]) > max(64, SOUND_TOLERANCE * y[1]):
+                bad.append(f'sound {x} vs {y}')
+        elif x != y:
+            bad.append(f)
+    if a[0] != b[0]:
+        bad.append('time')
+    return bad
 
 
 def run(script):
@@ -98,8 +122,8 @@ def run(script):
 def check(name):
     ref = [json.loads(line) for line in open(GOLDEN / f'{name}.jsonl')]
     for i, d in enumerate(run(SESSIONS[name])):
-        if d != ref[i]:
-            bad = [f for f, a, b in zip(FIELDS, d[1:], ref[i][1:]) if a != b]
+        bad = same(d, ref[i])
+        if bad:
             print(f'{name}: DIFFERENT at {d[0]}s (digest {i}): {", ".join(bad)}; '
                   f'last match at {ref[i - 1][0] if i else 0}s')
             return False

@@ -34,7 +34,9 @@ def _lib():
                 ('ds2502_new', p, [ctypes.c_char_p, ctypes.c_char_p]),
                 ('onewire_new', p, [p, p]),
                 ('flash_new', p, [p]), ('flash_flush', None, [p]), ('flash_idle', i, [p]),
-                ('flash_writes', u64, [p])]:
+                ('flash_writes', u64, [p]),
+                ('sim_new', p, [p, i, dbl]), ('sim_update', None, [p]),
+                ('sim_next_event', dbl, [p])]:
             f = getattr(lib, name)
             f.restype, f.argtypes = res, args
         lib._devices_declared = True
@@ -133,3 +135,17 @@ class OneWire:
         lib = _lib()
         self.battery = lib.ds2502_new(bytes(serial), bytes(memory))
         self.cdev = lib.onewire_new(m.c, self.battery)
+
+
+class SIMInterface:
+    """SIM card interface (SCIM) with a virtual GSM SIM (sim.c); a machine timer."""
+    def __init__(self, m, card=True, ips=52_000_000):
+        self.lib = _lib()
+        self.cdev = self.lib.sim_new(m.c, 1 if card else 0, float(ips))
+
+    def update(self):
+        self.lib.sim_update(self.cdev)
+
+    def next_event(self):
+        v = self.lib.sim_next_event(self.cdev)
+        return None if v < 0 else v

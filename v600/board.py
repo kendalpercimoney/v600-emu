@@ -2,8 +2,8 @@
 from . import bootrom, overrides
 from .audio import AudioDSP
 from .dsp import MDI, DSPMessages
-from .sim import SIMCard, SIMInterface
-from .devices import AITC, EdgePort, FreeRunCounter, Keypad, OneWire, OSTimer, Regs
+from .devices import (AITC, EdgePort, FreeRunCounter, Keypad, OneWire, OSTimer, Regs,
+                      SIMInterface)
 from .flash import Flash
 from .ati import ATIChip, ATISerialPort
 from .camera import MT9V111
@@ -90,9 +90,9 @@ def build(m, pds_barker=PDS_BARKER, flip_open=True, sim_card=True):
     # Unidentified unit at 0x24845000: +0x18 data, +0x10 bit 8 = start/busy (self-clearing).
     m.attach(0x24845000, 0x1000, Regs(m, 0x1000, clear_word=0x10, clear_mask=0x100))
     # SIM card interface (SCIM) at 0x2484F000 (driver strings p/SCIM_EXT_PORT, p/dl_sim_mgr)
-    # with a virtual SIM card in port 0 (sim.py). Without a card (sim_card=False) the card
+    # with a virtual SIM card in port 0 (core/sim.c). Without a card (sim_card=False) the card
     # reset/deactivate functions are overridden instead (overrides.py).
-    m.sim = SIMInterface(m, SIMCard() if sim_card else None, ips=CPU_IPS)
+    m.sim = SIMInterface(m, card=sim_card, ips=CPU_IPS)
     m.attach(0x2484F000, 0x100, m.sim)
     m.timers.append(m.sim)
     m.timers.append(m.audio)

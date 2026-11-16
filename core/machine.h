@@ -82,8 +82,9 @@ typedef struct {
     uint32_t ctrl, div;
 } onewire_t;
 
-/* -- NOR flash (flash.c) -- */
+/* -- NOR flash (flash.c), SIM interface + card (sim.c) -- */
 typedef struct flash flash_t;
+typedef struct sim sim_t;
 
 struct machine {
     arm_t *cpu;
@@ -135,5 +136,8 @@ flash_t    *flash_new(machine_t *);
 void        flash_flush(flash_t *);
 int         flash_idle(flash_t *);
 uint64_t    flash_writes(flash_t *);
+sim_t      *sim_new(machine_t *, int with_card, double ips);
+void        sim_update(sim_t *);
+double      sim_next_event(sim_t *);              /* counter units, or -1 */
 
 #endif

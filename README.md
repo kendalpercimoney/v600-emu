@@ -30,20 +30,35 @@ computer, from the boot animation through the menus.
 ## Running it
 
 The firmware is not included. You need your own V600 firmware dump as a Motorola superfile at
-`firmware/v600.shx`.
+`firmware/v600.shx`. Once, to set up:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/python tools/live.py        # then open http://localhost:8600
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 
+Then:
+
+```bash
+./phone          # the phone in your browser (http://localhost:8600)
+./phone test     # boot headless and check the main features: PASS / FAIL, about 30 s
+./phone drive 45.0 menu +2.0 shot:menu   # a scripted headless session (see tools/drive.py)
+```
+
+The page has the keypad, the display, and controls: **Sound**, **Close / Open flip**,
+**Save now**, **Restart** (reboot, keeping the saved state) and **Factory reset** (delete the
+saved state and boot the firmware as shipped). The outer display (the clock on the lid) is shown
+beside it. With the flip closed the phone behaves as it does closed: the main screen is dark,
+only the side keys (volume, voice, smart) can be pressed, and the phone uses the outer display.
+
 Keyboard: digits, `*` `#`, arrows, Space = OK, Enter = green key, Esc = red key (hold to
-switch off), F1/F2 = soft keys, M = menu.
+switch off), F1/F2 = soft keys, M = menu, +/- = volume.
 
 Changes the phone makes to its flash (settings, contacts, messages) are saved to
-`state/flash.bin` every few seconds and on exit, and restored next time. Start with
-`--fresh` to boot the phone as shipped.
+`state/flash.bin` every few seconds and on exit, and restored next time.
+
+`./phone test` boots from the firmware as shipped (it never touches `state/`) and checks: the
+idle screen, registering on the pretend network, the menu, the ringing tone, an outgoing call
+(set up, answered, hung up) and the outer display. Screenshots go to `out/selftest/`.
 
 ## Layout
 
@@ -53,7 +68,7 @@ Changes the phone makes to its flash (settings, contacts, messages) are saved to
 
 ## Next
 
-- A pretend network, so start-up gets past "Searching for Network" quickly.
-- Phone calls (voice path), the outer display, a camera picture.
+- Incoming calls and text messages from the pretend network; the call voice path.
+- Key-press tones (silent so far), the real-time clock (the phone shows 0:00), a camera picture.
 
 This is an independent hobby project, not affiliated with or endorsed by Motorola.

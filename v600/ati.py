@@ -36,6 +36,7 @@ GLOBAL_ALPHA = 0x1210
 DP_SRC_FRGD_CLR, DP_SRC_BKGD_CLR = 0x1240, 0x1244
 DP_MIX = 0x12C8
 I2C_CNTL_0, I2C_CNTL_1, I2C_DATA = 0x0988, 0x098C, 0x0990
+SUB_ADDR, SUB_START, SUB_LENGTH = 0x05AC, 0x05B0, 0x05B4
 
 
 class ATIChip:
@@ -51,6 +52,7 @@ class ATIChip:
         self.veiled = bytearray((MEM_MASK + 1) // 2)
         self.under = bytearray(MEM_MASK + 1)
         self.i2c = I2CEngine()                   # the camera sensor's bus
+        self.outer = OuterDisplay()              # the small display on the closed flip
 
     def reg(self, r):
         return self.regs.get(0x10000 + r, 0)
@@ -95,6 +97,11 @@ class ATIChip:
             self.cp.clear()
         elif r == DST_WIDTH_HEIGHT:
             self.blit_registers()
+        elif r == SUB_START:                     # bytes for the outer display
+            a = self.reg(SUB_ADDR) & MEM_MASK
+            n = (value & 0xFF) + self.reg(SUB_LENGTH)
+            words = np.frombuffer(bytes(self.mem[a:a + ((n + 3) & ~3)]), np.uint8).reshape(-1, 4)
+            self.outer.write(words[:, ::-1].tobytes()[:n], value & 0xFF)   # stream is in 32-bit words
 
     def read8(self, addr):
         if addr < 0x10000:
@@ -470,3 +477,50 @@ class I2CEngine:
             self.fifo = list(dev.read(n_data))
         else:
             dev.write(bytes(addr[1:] + out[:n_data]))
+
+
+class OuterDisplay:
+    """The 96 x 32 monochrome display on the outside of the flip (clock, caller ID).
+
+    The chip forwards bytes to it: SUB_ADDR (0x5AC) points at them in chip memory,
+    SUB_LENGTH (0x5B4) is the number of pixel bytes (96, one page row) and writing
+    SUB_START (0x5B0) with the number of command bytes in front sends them. The chip sends
+    the stream a 32-bit word at a time, low byte first, so the bytes of each word in its
+    memory go out in reverse order (byte-swapped, the clock's digits come out with every
+    four columns reversed). The commands
+    are those of the usual page-addressed LCD controllers: 0xB0-0xB7 page (8 pixel rows),
+    0x10-0x1F / 0x00-0x0F column high / low nibble, 0xA1 / 0xA0 column order (A1 reads
+    correctly: signal bars left, battery right). Each pixel
+    byte is a column of 8 pixels, bit 0 at the top."""
+    WIDTH, PAGES = 96, 4
+
+    def __init__(self):
+        self.pixels = np.zeros((self.PAGES * 8, self.WIDTH), dtype=bool)
+        self.page = self.column = 0
+        self.mirrored = False
+        self.updates = 0                         # to tell when the picture changed
+
+    def write(self, data, ncommands):
+        for c in data[:ncommands]:
+            if 0xB0 <= c <= 0xB7:
+                self.page = c & 7
+            elif 0x10 <= c <= 0x1F:
+                self.column = (self.column & 0x0F) | (c & 0x0F) << 4
+            elif c <= 0x0F:
+                self.column = (self.column & 0xF0) | c
+            elif c in (0xA0, 0xA1):
+                self.mirrored = c == 0xA0          # A1 is left-to-right on this panel
+        if self.page >= self.PAGES:
+            return
+        bits = np.unpackbits(np.frombuffer(data[ncommands:], np.uint8)[:, None], axis=1,
+                             bitorder='little').T.astype(bool)          # 8 rows x n columns
+        x = self.column
+        n = min(bits.shape[1], self.WIDTH - x)
+        if n > 0:
+            cols = self.WIDTH - 1 - np.arange(x, x + n) if self.mirrored else np.arange(x, x + n)
+            self.pixels[self.page * 8:self.page * 8 + 8, cols] = bits[:, :n]
+            self.updates += 1
+
+    def image(self, on=(20, 30, 60), off=(150, 190, 215)):
+        rgb = np.where(self.pixels[:, :, None], np.array(on, np.uint8), np.array(off, np.uint8))
+        return Image.fromarray(rgb.astype(np.uint8))

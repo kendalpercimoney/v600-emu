@@ -15,6 +15,11 @@
   .phone { background: var(--body); border-radius: 28px; padding: 22px 18px 26px; width: 376px;
            max-width: calc(100vw - 32px); box-sizing: border-box; box-shadow: 0 8px 30px #0004; }
   .screen { background: var(--bezel); border-radius: 8px; padding: 6px; }
+  .screen { position: relative; }
+  .closed .screen img { opacity: .15; }
+  .closed .screen::after { content: 'Flip closed: see the outer display'; position: absolute; inset: 0;
+           display: flex; align-items: center; justify-content: center; color: #ddd; font-weight: 600; }
+  .closed button[data-k]:not([data-side]) { opacity: .3; pointer-events: none; }
   .screen img { display: block; width: 100%; image-rendering: pixelated; border-radius: 3px; }
   .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; }
   button { background: var(--key); color: var(--key-text); border: 0; border-radius: 10px;
@@ -26,6 +31,12 @@
   aside { max-width: 340px; color: var(--muted); }
   aside h1 { font-size: 18px; color: var(--text); margin: 4px 0 8px; }
   #log { font: 12px ui-monospace, monospace; white-space: pre-wrap; margin-top: 12px; }
+  .outer { background: var(--bezel); border-radius: 8px; padding: 6px; display: inline-block; margin: 6px 0 4px; }
+  .outer img { display: block; width: 288px; max-width: 100%; image-rendering: pixelated; border-radius: 3px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .controls button { padding: 8px 12px; font-size: 13px; }
+  h2 { font-size: 13px; color: var(--text); margin: 16px 0 2px; text-transform: uppercase; letter-spacing: .05em; }
+  #stopped { color: var(--danger); font-weight: 600; }
   kbd { border: 1px solid var(--muted); border-radius: 4px; padding: 0 4px; font-size: 12px; }
 </style>
 </head>
@@ -38,12 +49,12 @@
       <span></span><button data-k="up">▲</button><span></span>
       <button data-k="left">◀</button><button data-k="ok">OK</button><button data-k="right">▶</button>
       <span></span><button data-k="down">▼</button><span></span>
-      <button data-k="green" class="green">Send</button><button data-k="smart">Smart</button><button data-k="red" class="red">End</button>
+      <button data-k="green" class="green">Send</button><button data-k="smart" data-side>Smart</button><button data-k="red" class="red">End</button>
       <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
       <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
       <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
       <button data-k="*">*</button><button data-k="0">0</button><button data-k="#">#</button>
-      <button data-k="vol_up" class="small">Vol +</button><button data-k="voice" class="small">Voice</button><button data-k="vol_down" class="small">Vol −</button>
+      <button data-k="vol_up" class="small" data-side>Vol +</button><button data-k="voice" class="small" data-side>Voice</button><button data-k="vol_down" class="small" data-side>Vol −</button>
     </div>
   </div>
   <aside>
@@ -51,14 +62,28 @@
     <div>Firmware TRIPLETS_G_0B.09.38R, emulated. Keyboard: digits, <kbd>*</kbd> <kbd>#</kbd>,
       arrows, <kbd>Space</kbd> OK, <kbd>Enter</kbd> send, <kbd>Esc</kbd> end (hold about 2 s to
       switch off), <kbd>F1</kbd>/<kbd>F2</kbd> soft keys, <kbd>M</kbd> menu,
-      <kbd>+</kbd>/<kbd>−</kbd> volume.</div>
-    <p><button id="sound" class="small" style="padding:8px 14px">Sound: off</button></p>
+      <kbd>+</kbd>/<kbd>−</kbd> volume. With the flip closed only the side keys
+      (volume, voice, smart) can be reached, and the phone uses the outer display.</div>
+    <h2>Controls</h2>
+    <div class="controls">
+      <button id="sound">Sound: off</button>
+      <button id="flip">Close flip</button>
+      <button data-do="save">Save now</button>
+      <button data-do="restart" title="Reboot the phone, keeping its saved settings and contacts">Restart</button>
+      <button data-do="factory" class="red" title="Reboot from the firmware as shipped, deleting the saved phone state">Factory reset</button>
+    </div>
+    <h2>Outer display</h2>
+    <div class="outer"><img id="outer" alt="V600 outer display" width="288" height="96"></div>
+    <div>Shown on the lid when the flip is closed.</div>
+    <h2>Status</h2>
+    <div id="stopped"></div>
     <div id="status"></div>
     <div id="log"></div>
   </aside>
 </main>
 <script>
 const lcd = document.getElementById('lcd');
+let flipOpen = true;
 let loading = false;
 function refresh() {
   if (loading) return;
@@ -69,6 +94,25 @@ function refresh() {
   img.src = '/frame.png?t=' + Date.now();
 }
 setInterval(refresh, 120);
+const outerImg = document.getElementById('outer');
+setInterval(() => { const img = new Image();
+  img.onload = () => { outerImg.src = img.src; }; img.src = '/outer.png?t=' + Date.now(); }, 500);
+const control = q => fetch('/control?' + q);
+const confirmText = {
+  restart: 'Restart the phone? Its saved settings and contacts are kept.',
+  factory: 'Factory reset? This deletes the saved phone state (settings, contacts, messages) and boots the firmware as shipped.' };
+for (const b of document.querySelectorAll('button[data-do]')) b.onclick = () => {
+  const what = b.dataset.do;
+  if (confirmText[what] && !confirm(confirmText[what])) return;
+  control('do=' + what);
+};
+const phoneEl = document.querySelector('.phone'), flipBtn = document.getElementById('flip');
+function showFlip(open) {
+  flipOpen = open;
+  flipBtn.textContent = open ? 'Close flip' : 'Open flip';
+  phoneEl.classList.toggle('closed', !open);
+}
+flipBtn.onclick = () => { control('do=flip&open=' + (flipOpen ? 0 : 1)); showFlip(!flipOpen); };
 function send(k, down) { fetch(`/key?name=${encodeURIComponent(k)}&down=${down ? 1 : 0}`); }
 for (const b of document.querySelectorAll('button[data-k]')) {
   const k = b.dataset.k;
@@ -82,7 +126,8 @@ const map = { Enter: 'green', F1: 'soft_left', F2: 'soft_right', m: 'menu', M: '
               '*': '*', '#': '#' };
 for (let d = 0; d <= 9; d++) map[String(d)] = String(d);
 const held = new Set();
-addEventListener('keydown', e => { const k = map[e.key]; if (!k || held.has(k)) return;
+const SIDE = new Set(['vol_up', 'vol_down', 'voice', 'smart']);   // reachable with the flip closed
+addEventListener('keydown', e => { const k = map[e.key]; if (!k || held.has(k) || (!flipOpen && !SIDE.has(k))) return;
   held.add(k); e.preventDefault(); send(k, true); });
 addEventListener('keyup', e => { const k = map[e.key]; if (!k) return; held.delete(k); send(k, false); });
 // Sound. /audio: first sample index (uint32 LE), then 16 kHz 16-bit PCM (v600/midi.py RATE),
@@ -141,6 +186,8 @@ setInterval(async () => {
     document.getElementById('status').textContent =
       `Phone time ${s.seconds}s` + (s.lag > 0.5 ? ` (running ${s.lag}s behind real time)` : '');
     document.getElementById('log').textContent = s.log.join('\n');
+    document.getElementById('stopped').textContent = s.stopped || '';
+    if (s.flip_open !== flipOpen) showFlip(s.flip_open);
   } catch (e) {}
 }, 1000);
 </script>

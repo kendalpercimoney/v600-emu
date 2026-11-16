@@ -1,0 +1,4 @@
+unicorn==2.1.4
+capstone>=5.0
+numpy>=1.24
+pillow>=10.0

@@ -234,3 +234,12 @@ Boot to idle ~60 s -> ~13 s headless; a Java game launch 12 s -> 5 s for 20 s of
 Tried and dropped: wall-clock slices without count= (Unicorn's timeout never fires here; a
 helper thread can stop it, but the flash file system misbehaved), and ending slices when
 the OS idles (the boot animation stalls; the idle routine is entered constantly).
+
+## Status (2026-11-16): pretend network, outer display, controls
+- `network.py` answers at the MM / services boundary with OS messages sent from the idle task
+  (`Machine.call`): registration (5 bars, carrier name from the SIM), and outgoing calls in
+  GSM 04.08 call control (SETUP -> CALL PROCEEDING, ALERTING, CONNECT; DISCONNECT/RELEASE).
+- The outer display is modelled (`ati.OuterDisplay`); closing the flip shows the clock there.
+- Live page: Restart, Factory reset, Save now, flip, outer display preview; closed, only the
+  side keys work. `./phone` launcher and `./phone test` (tools/selftest.py, all passing).
+- Open: key-press tones are silent; the RTC is unset (0:00); incoming calls, SMS.

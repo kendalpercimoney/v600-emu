@@ -1,9 +1,13 @@
 """Run the phone in real time and use it from a browser.
 
-    .venv/bin/python tools/live.py [port] [--fresh] [--state=FILE]   then open http://localhost:8600
+    .venv/bin/python tools/live.py [port] [--fresh] [--state=FILE] [--open]
+    (or ./v600) then open http://localhost:8600; --open opens it in the browser.
 
 The phone's flash changes (settings, contacts, messages) are kept in state/flash.bin (or
 FILE) and restored on the next start; --fresh starts from the firmware image as shipped.
+
+The page also has Restart (reboot, keeping the saved state), Factory reset (delete it and
+boot the firmware as shipped), Save now, the flip, and the outer display.
 
 The emulator thread runs in short bursts and sleeps whenever virtual time gets ahead of the
 wall clock (idle periods are fast-forwarded by the machine, then waited out here). The page
@@ -19,6 +23,7 @@ import queue
 import sys
 import threading
 import time
+import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -56,64 +61,93 @@ STATE = Path(__file__).resolve().parent.parent / 'state' / 'flash.bin'
 
 
 class Phone:
+    """The emulated phone plus what the page can ask of it. Everything that touches the
+    machine runs on the emulator thread (run()), fed through the `commands` queue."""
+
     def __init__(self, fresh=False, state=STATE):
         self.state = state
-        self.m = Machine(log=lambda *a: None)
-        self.m.verbose_mmio = False
-        board.build(self.m)
-        self.m.reset()
-        if state.exists() and not fresh:
-            n = self.m.flash.load(state)
-            print(f'restored {n} flash blocks from {state}', flush=True)
+        self.messages = []
+        self.commands = queue.Queue()
+        self.lock = threading.Lock()
+        self.png = self.outer_png = b''
+        self.frame_id = self.outer_id = None
+        self.boot(fresh)
+
+    def boot(self, fresh=False):
+        """(Re)start the phone from the firmware, plus the saved flash unless fresh."""
+        m = Machine(log=lambda *a: None)
+        m.verbose_mmio = False
+        board.build(m)
+        m.reset()
+        if self.state.exists() and not fresh:
+            n = m.flash.load(self.state)
+            print(f'restored {n} flash blocks from {self.state}', flush=True)
+        self.messages.clear()
+        fwlog.install(m, sink=self.messages.append)
+        m.timers.append(WallClock(self))
+        self.flip_open = True
+        self.stopped = None
         self.saved_writes = 0
         self.last_save = time.monotonic()
-        self.messages = []
-        fwlog.install(self.m, sink=self.messages.append)
-        self.keys = queue.Queue()
-        self.lock = threading.Lock()
-        self.png = b''
-        self.frame_id = -1
-        self.wall0 = None
-        self.virt0 = 0
-        self.m.timers.append(WallClock(self))
+        self.wall0, self.virt0 = time.monotonic(), 0
+        self.m = m
 
     def frame(self):
-        """PNG of the visible screen, re-encoded only when the ATI drew something."""
+        """PNG of the main display, re-encoded only when the ATI drew something."""
         ati = self.m.ati
-        fid = (ati.draws, ati.reg(0x418))
+        fid = (id(ati), ati.draws, ati.reg(0x418))
         if fid != self.frame_id:
-            img = ati.screen().resize((352, 440), Image.NEAREST)
-            buf = io.BytesIO()
-            img.save(buf, 'PNG')
-            self.png, self.frame_id = buf.getvalue(), fid
+            self.png, self.frame_id = png(ati.screen().resize((352, 440), Image.NEAREST)), fid
         return self.png
 
+    def outer(self):
+        """PNG of the outer (closed-flip) display, 96 x 32 pixels shown 3x."""
+        disp = self.m.ati.outer
+        fid = (id(disp), disp.updates)
+        if fid != self.outer_id:
+            self.outer_png, self.outer_id = png(disp.image().resize((288, 96), Image.NEAREST)), fid
+        return self.outer_png
+
     def run(self):
-        m = self.m
-        self.wall0 = time.monotonic()
         while True:
-            while not self.keys.empty():
-                name, down = self.keys.get()
-                board.press(m, name, down)
+            while not self.commands.empty():
+                self.handle(*self.commands.get())
+            m = self.m
             ahead = (m.insns - self.virt0) / CPU_IPS - (time.monotonic() - self.wall0)
-            if ahead > 0:
-                time.sleep(min(ahead, 0.02))
+            if ahead > 0 or self.stopped:
+                time.sleep(min(max(ahead, 0), 0.02) or 0.02)
                 continue
             with self.lock:
                 r = m.run(max_insns=200_000, poll_slices=10**9, spin_slices=10**9)
             if r == 'error':
+                self.stopped = 'CPU error (Restart to boot again)'
                 print('emulator stopped: CPU error', flush=True)
-                return
             if ahead < -2.0:                    # can't keep up: let the clock slip
                 self.wall0 += -ahead - 2.0
             if time.monotonic() - self.last_save > 5:
                 self.save()
 
-    def save(self):
+    def handle(self, what, *args):
+        if what == 'key':
+            board.press(self.m, *args)
+        elif what == 'flip':
+            self.flip_open = args[0]
+            board.set_flip(self.m, self.flip_open)
+        elif what == 'restart':
+            self.save()
+            self.boot()
+        elif what == 'factory':
+            if self.state.exists():
+                self.state.unlink()
+            self.boot(fresh=True)
+        elif what == 'save':
+            self.save(force=True)
+
+    def save(self, force=False):
         """Write changed flash blocks (settings, contacts, ...) to the state file."""
         f = self.m.flash
         self.last_save = time.monotonic()
-        if f.writes != self.saved_writes and f.idle():
+        if (force or f.writes != self.saved_writes) and f.idle():
             with self.lock:
                 f.save(self.state)
             self.saved_writes = f.writes
@@ -140,7 +174,13 @@ class Phone:
     def status(self):
         lag = (time.monotonic() - self.wall0) - (self.m.insns - self.virt0) / CPU_IPS
         return {'seconds': round(self.m.insns / CPU_IPS, 1), 'lag': round(lag, 2),
-                'log': self.messages[-6:]}
+                'log': self.messages[-6:], 'flip_open': self.flip_open, 'stopped': self.stopped}
+
+
+def png(img):
+    buf = io.BytesIO()
+    img.save(buf, 'PNG')
+    return buf.getvalue()
 
 
 def handler(phone):
@@ -163,10 +203,19 @@ def handler(phone):
                 self.send(PAGE.read_bytes(), 'text/html; charset=utf-8')
             elif u.path == '/frame.png':
                 self.send(phone.frame(), 'image/png')
+            elif u.path == '/outer.png':
+                self.send(phone.outer(), 'image/png')
             elif u.path == '/key':
                 name = q.get('name', [''])[0]
                 if name in Keypad.CODES or name == 'red':
-                    phone.keys.put((name, q.get('down', ['1'])[0] == '1'))
+                    phone.commands.put(('key', name, q.get('down', ['1'])[0] == '1'))
+                self.send(b'ok', 'text/plain')
+            elif u.path == '/control':          # restart, factory, save, flip
+                what = q.get('do', [''])[0]
+                if what == 'flip':
+                    phone.commands.put(('flip', q.get('open', ['1'])[0] == '1'))
+                elif what in ('restart', 'factory', 'save'):
+                    phone.commands.put((what,))
                 self.send(b'ok', 'text/plain')
             elif u.path == '/audio':
                 self.send(phone.sound(), 'application/octet-stream')
@@ -194,7 +243,10 @@ def main():
     if server is None:
         sys.exit('no free port found')
     threading.Thread(target=phone.run, daemon=True).start()
-    print(f'V600 running: http://localhost:{server.server_address[1]}  (Ctrl+C to quit)', flush=True)
+    url = f'http://localhost:{server.server_address[1]}'
+    print(f'V600 running: {url}  (Ctrl+C to quit)', flush=True)
+    if '--open' in sys.argv:
+        webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

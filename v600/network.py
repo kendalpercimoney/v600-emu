@@ -60,6 +60,8 @@ class Network:
         self.port = None                # where MM sends MNMM messages
         self.events = []                # (due insns, fn, tag)
         self.call_port = None
+        self.registered = False
+        self.from_phone = []            # call-control message types the phone sent (tests)
         m.hook(SEND_MESSAGE, self._sent)
         m.hook(SEND_REG_REQ, self._reg_req)
 
@@ -89,6 +91,7 @@ class Network:
 
     def _call_control(self, transaction, l3):
         kind = l3[1] & 0x3F
+        self.from_phone.append(kind)
         say = lambda kind, delay: self.after(delay, lambda: self._to_phone(transaction, l3[0], kind), 'call')
         if kind == SETUP:
             say(CALL_PROCEEDING, 0.3)
@@ -110,6 +113,7 @@ class Network:
             self.after(REGISTRATION_DELAY, self.register)
 
     def register(self):
+        self.registered = True
         body = bytearray(0x20)
         body[2] = REGISTERED
         body[3:6] = PLMN

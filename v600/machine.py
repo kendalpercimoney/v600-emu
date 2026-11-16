@@ -1,5 +1,6 @@
 """The emulated V600: CPU, memory map and the MMIO dispatcher."""
 import collections
+import os
 from unicorn import (Uc, UcError, UC_ARCH_ARM, UC_MODE_ARM, UC_MODE_BIG_ENDIAN, UC_HOOK_INTR,
                      UC_HOOK_MEM_UNMAPPED, UC_HOOK_CODE, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE)
 from unicorn.arm_const import *
@@ -23,7 +24,11 @@ REGS = [UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_R
 class Machine:
     def __init__(self, shx='firmware/v600.shx', log=print):
         self.log = log
-        self.uc = uc = Uc(UC_ARCH_ARM, UC_MODE_ARM | UC_MODE_BIG_ENDIAN)
+        if os.environ.get('V600_CPU') == 'c':          # the portable C core (core/, PORTING.md)
+            from .core import Core
+            self.uc = uc = Core()
+        else:
+            self.uc = uc = Uc(UC_ARCH_ARM, UC_MODE_ARM | UC_MODE_BIG_ENDIAN)
         uc.ctl_set_cpu_model(UC_CPU_ARM_926)         # ARMv5: closest to the ARM7TDMI (v4T)
         uc.mem_map(0, 0x20000)                       # vectors + boot ROM routines (stubbed, see bootrom.py)
         uc.mem_map(*IRAM)

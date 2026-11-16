@@ -32,7 +32,17 @@ signing) that only receives build products; it never contains emulator source.
 
 Each phase ends with something runnable and `./phone test` passing.
 
-### 1. CPU core in C, checked against Unicorn
+### 1. CPU core in C, checked against Unicorn — done (2026-11-16)
+Result: `core/cpu.c` + `core/mem.c` (~800 lines). `V600_CPU=c` runs the whole emulator on
+it through `v600/core.py` (the Unicorn calls Machine uses). `tools/lockstep.py` shows the
+same registers (all modes), internal RAM and RAM as Unicorn every 0.25 s through 20 s of
+boot (1.04 billion instructions); `./phone test` passes, 17 s instead of 24 s. Unicorn
+details matched on the way: a Thumb BL pair counts as one instruction when both halves sit
+on one 1 KB page (QEMU's page size here); instructions cannot change CPSR bit 9 (E).
+Not done yet: the decoded-instruction cache (not needed so far: the CPU is ~15% of the
+run time, Python models the rest).
+
+Plan as written:
 - `core/cpu.c`: ARMv4T/v5 interpreter, ARM and Thumb, big-endian, the modes and
   exceptions the firmware uses (IRQ, SVC, undefined, abort), CP15 basics. Decoded-instruction
   cache per 4 KB page, invalidated on writes to code pages (replaces `ctl_remove_cache`).

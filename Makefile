@@ -11,10 +11,13 @@ build/libv600core.dylib: $(SRC) $(HDR)
 test: build/libv600core.dylib
 	V600_CPU=c .venv/bin/python tools/selftest.py
 
-check: build/libv600core.dylib          # C core vs Unicorn, state compared every 0.25 s
+check: build/libv600core.dylib          # whole machine vs the golden trace (tests/)
+	V600_CPU=c .venv/bin/python tools/golden.py check
+
+lockstep: build/libv600core.dylib       # C CPU vs Unicorn, side by side
 	.venv/bin/python tools/lockstep.py 20.0 0.25
 
 clean:
 	rm -rf build
 
-.PHONY: test check clean
+.PHONY: test check lockstep clean

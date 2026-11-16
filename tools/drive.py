@@ -9,6 +9,7 @@ then each scenario runs in a forked copy of the phone from that point):
     12.5 / 12.0   run until that many seconds of phone time (write 5.0, not 5)
     +3            run 3 s more
     shot:NAME     save the screen to out/NAME.png
+    flip:0 / 1    close / open the flip
 
 --state starts from state/flash.bin like live mode (default: the firmware as shipped).
 --log prints the firmware's own log lines. Stops with registers, backtrace and the last
@@ -112,6 +113,9 @@ def steps(m, todo):
         now = m.insns / CPU_IPS
         if step.startswith('shot:'):
             shot(m, step[5:])
+            continue
+        if step.startswith('flip:'):
+            board.set_flip(m, step[5:] == '1')
             continue
         if step in Keypad.CODES or step == 'red':
             board.press(m, step)

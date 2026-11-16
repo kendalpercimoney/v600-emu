@@ -260,6 +260,7 @@ class Machine:
         bkpt = ARM_BKPT if len(original) == 4 else THUMB_BKPT
         self.breakpoints[addr] = (fns, original, emulate)
         self.uc.mem_write(addr, bkpt)
+        self.uc.ctl_remove_cache(addr, addr + len(bkpt))     # if that code already ran
         if FLASH[0] <= addr < FLASH[0] + FLASH[1] and hasattr(self, 'flash'):
             self.flash.patched(addr, bkpt)               # not a change to save
         self.iram_breakpoints |= IRAM[0] <= addr < IRAM[0] + IRAM[1]

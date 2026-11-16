@@ -4,9 +4,10 @@
 
 Steps, in order (a bare "--" starts a new scenario: the steps before the first "--" run once,
 then each scenario runs in a forked copy of the phone from that point):
-    12.5          run until 12.5 s of phone time
+    up / ok / 5   press and release a key (Keypad.CODES names, or 'red'); a key name wins,
+                  so a bare 5 is the key
+    12.5 / 12.0   run until that many seconds of phone time (write 5.0, not 5)
     +3            run 3 s more
-    up / ok / 5   press and release a key (Keypad.CODES names, or 'red')
     shot:NAME     save the screen to out/NAME.png
 
 --state starts from state/flash.bin like live mode (default: the firmware as shipped).
@@ -25,6 +26,7 @@ from PIL import Image  # noqa: E402
 from v600 import board, fwlog  # noqa: E402
 from v600.board import CPU_IPS  # noqa: E402
 from v600.machine import Machine  # noqa: E402
+from v600.periph import Keypad  # noqa: E402
 
 
 def boot(state=False, log=False, verbose=False):
@@ -111,15 +113,13 @@ def steps(m, todo):
         if step.startswith('shot:'):
             shot(m, step[5:])
             continue
-        try:
-            target = now + float(step[1:]) if step.startswith('+') else float(step)
-        except ValueError:
+        if step in Keypad.CODES or step == 'red':
             board.press(m, step)
             ok = run_until(m, now + 0.2)
             board.press(m, step, False)
             ok = ok and run_until(m, now + 0.6)
         else:
-            ok = run_until(m, target)
+            ok = run_until(m, now + float(step[1:]) if step.startswith('+') else float(step))
         if not ok:
             print(f'{m.insns / CPU_IPS:7.2f}s  CPU error after step {step!r}')
             crash_report(m)

@@ -18,7 +18,7 @@ computer, from the boot animation through the menus.
   reaches the idle screen ("No Service") and its menus can be navigated.
 - Sound: key clicks, the power-up tune, tone, MIDI and MP3 ringtones. The phone's DSP runs
   from ROM we don't have, so its audio side is recreated from the commands the firmware
-  sends it (`v600/audio.py`, MIDI synthesis in `v600/midi.py`; MP3 is decoded by the browser).
+  sends it (`core/audio.c`, with MIDI synthesis; MP3 is decoded by the browser).
 - The camera app opens (black viewfinder: the sensor answers, but makes no picture yet).
 - Runs in real time in a browser with clickable keys (`tools/live.py`); press "Sound" on the
   page to hear it.
@@ -65,9 +65,15 @@ idle screen, registering on the pretend network, the menu, the ringing tone, an 
 
 ## Layout
 
-- `v600/`: the machine (memory map, CPU loop, interrupts) and hardware models.
-- `tools/`: live mode, tracers, disassembly and symbol helpers.
+- `core/`: the emulator, in portable C: the CPU (`cpu.c`, `mem.c`), the machine loop and
+  hooks (`run.c`, `machine.c`), one file per chip (`ati.c`, `sim.c`, `audio.c`, ...),
+  the firmware hooks (`firmware.c`) and the board (`board.c`). `make` builds it.
+- `v600/`: the Python handle on it that the tools use (`machine.py`, `board.py`).
+- `tools/`: live mode, the self-test, scripted runs, golden traces, disassembly helpers.
+- `tests/golden/`: the golden traces: digests of the whole machine through scripted
+  sessions, recorded from the all-Python version (tag `py-reference`); `./phone check`.
 - `PLAN.md`: approach and progress log. `HARDWARE.md`: every register learned and how.
+  `PORTING.md`: the plan for the browser and iPhone builds.
 
 ## Next
 

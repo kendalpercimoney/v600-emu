@@ -54,7 +54,18 @@ Plan as written:
   from reset, comparing registers every instruction and memory writes every block, until
   the first difference. Target: identical to the idle screen (~13 s of phone time).
 
-### 2. Chip models in C, one file per Python module
+### 2. Chip models in C, one file per Python module — done (2026-11-17)
+Result: all of it is C (~5,300 lines in `core/`): every chip model, the machine loop,
+breakpoint hooks, the firmware hooks (boot ROM, overrides, firmware log, pretend network)
+and the board. Python (`v600/`, ~700 lines) is a handle for the tools. The check is the
+golden traces (`tests/golden/`, `./phone check`): digests of registers, RAM, graphics
+memory, the outer display, sound and media clips every 0.25 s through two scripted
+sessions (a call; the ringtone list with tones, MP3 and MIDI), recorded from the
+all-Python version tagged `py-reference`; all identical, except that synthesised sound is
+compared by loudness (C's sin / exp and random numbers instead of numpy's). Speed: the
+self-test runs 70 s of phone time in 4 s (was 24 s); about 125 M instructions / s.
+
+Plan as written:
 `irq, periph (timers, keypad, GPIO, DMA, UART/SCIM), flash, bootrom, ds2502, sim, ati
 (+ outer display, I2C), camera, dsp, audio, midi, network, overrides, fwlog`.
 Same names, same docstrings with the firmware addresses, ported one at a time.

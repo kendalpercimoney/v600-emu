@@ -243,3 +243,10 @@ the OS idles (the boot animation stalls; the idle routine is entered constantly)
 - Live page: Restart, Factory reset, Save now, flip, outer display preview; closed, only the
   side keys work. `./phone` launcher and `./phone test` (tools/selftest.py, all passing).
 - Open: key-press tones are silent; the RTC is unset (0:00); incoming calls, SMS.
+
+## Status (2026-11-17, overnight): the emulator is C
+- Phase 1 and 2 of PORTING.md: a C CPU core (exact against Unicorn instruction by
+  instruction), then every model, the machine loop and the firmware hooks ported to C,
+  checked against golden traces recorded from the Python version (tag `py-reference`).
+- The self-test runs 70 s of phone time in 4 s. Python is a thin binding for the tools.
+- Next: the public C API (`v600.h`) and the WebAssembly build (needs Emscripten).

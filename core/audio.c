@@ -12,7 +12,8 @@
        w2      the tone's id (DL_AudPlayTone's argument, e.g. 0x12 for a key click)
        w5      number of tones << 8 | number of cadence pairs
        flags   one byte per tone, padded to a word; 1 = starts after the previous tones
-               end, 0 = sounds together with the previous one (inferred: dial tones pair)
+               end, 0 = sounds together with the previous one (inferred: dial tones pair),
+               2 = a dual tone (the keypad's DTMF digits), entry (coef 1, coef 2, duration, 0)
        tones   (coefficient, duration, 0): coefficient = cos(2 pi f / 8000) in Q15, the
                recursive-oscillator form (USA_DIAL_TONE has 0x7B31 / 0x786E = 350 / 440 Hz);
                duration in 8 kHz samples, 0x7FFF = until stopped; 0x7FFF coefficient = rest
@@ -445,31 +446,37 @@ static void tones(audio_t *a, const uint16_t *w, int n, int64_t now) {
     #define W(i) ((i) < n ? w[i] : 0)
     #define FLAG(i) ((W(6 + (i) / 2) >> ((i) % 2 ? 0 : 8)) & 0xFF)
     double tt = 0, prev = 0;
+    int pos = base, osc = 0;                              /* osc: oscillator, for its gain */
     for (int i = 0; i < count; i++) {
-        int coef = W(base + 3 * i), d = W(base + 3 * i + 1);
+        int dual = FLAG(i) == 2, ncoef = dual ? 2 : 1, d = W(pos + ncoef);
         double at = (i == 0 || FLAG(i)) ? tt : prev;
         double dur = d == CONTINUOUS ? INFINITY : (double)(d * SCALE);
-        if (coef != CONTINUOUS && t->nnotes < 32) {
+        for (int k = 0; k < ncoef; k++, osc++) {
+            int coef = W(pos + k);
+            if (coef == CONTINUOUS || t->nnotes == 32) continue;
             double c = (coef & 0x8000 ? coef - 0x10000 : coef) / 32768.0;
-            double g = i < a->ngains ? a->gains[i] : UNITY / 4;
+            double g = osc < a->ngains ? a->gains[osc] : UNITY / 4;
             double f = acos(fmax(-1, fmin(1, c))) * TONE_RATE / (2 * M_PI);
             t->notes[t->nnotes++] = (tone_t){at, dur, f, fmin(1.0, g / UNITY)};
         }
+        pos += ncoef + 2;
         prev = at;
         tt = fmax(tt, at + dur);
     }
-    int avail = n - (base + 3 * count);                   /* complete pairs present only */
+    int avail = n - pos;                                  /* complete pairs present only */
     if (avail / 2 < npairs) npairs = avail > 0 ? avail / 2 : 0;
+    int endless = 0;                                      /* cadence "on" 0x7FFF: until stopped */
     for (int k = 0; k < npairs && t->ncad < 32; k++) {
-        t->cad[t->ncad][0] = (int64_t)W(base + 3 * count + 2 * k) * SCALE;
-        t->cad[t->ncad][1] = (int64_t)W(base + 3 * count + 2 * k + 1) * SCALE;
+        if (W(pos + 2 * k) == CONTINUOUS) { endless = 1; continue; }
+        t->cad[t->ncad][0] = (int64_t)W(pos + 2 * k) * SCALE;
+        t->cad[t->ncad][1] = (int64_t)W(pos + 2 * k + 1) * SCALE;
         t->ncad++;
     }
     #undef W
     #undef FLAG
     t->length = fmax(tt, 1);
     t->start = now;
-    t->end = !t->ncad && isfinite(t->length) ? now + (int64_t)t->length : -1;
+    t->end = !t->ncad && !endless && isfinite(t->length) ? now + (int64_t)t->length : -1;
     add_sound(a, t);
     if (t->end >= 0) {
         uint16_t r[4] = {0x9B80, (uint16_t)((w[1] & 0xFF00) | 2), n > 2 ? w[2] : 0, 0};

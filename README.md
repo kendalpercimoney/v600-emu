@@ -104,6 +104,6 @@ instead (handy while changing the core: no app rebuild).
 ## Next
 
 - Incoming calls and text messages from the pretend network; the call voice path.
-- Key-press tones (silent so far), the real-time clock (the phone shows 0:00), a camera picture.
+- A camera picture.
 
 This is an independent hobby project, not affiliated with or endorsed by Motorola.

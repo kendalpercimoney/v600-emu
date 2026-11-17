@@ -155,14 +155,14 @@ void v600_build(machine_t *m, int flip_open, int sim_card) {
 
 /* A key: 0.. in the keypad's order (periph.c), or -1 for the red key (the power key on
    the PCAP). */
-void v600_press(machine_t *m, int key, int down) {
+void board_press(machine_t *m, int key, int down) {
     if (key < 0) pmic_power_key(m->pmic, down);
     else keypad_press(m->keypad, key, down);
 }
 
 /* The flip sensor on INT0 (pulled up): high = open (main display), low = closed (the UI
    moves to the outer display). */
-void v600_flip(machine_t *m, int open) { edgeport_set_pin(m->edgeport, 0, open); }
+void board_flip(machine_t *m, int open) { edgeport_set_pin(m->edgeport, 0, open); }
 
 /* Parts of the board, for the host: 0 CPU, 1 keypad, 2 edge port, 3 power IC, 4 graphics
    chip, 5 audio, 6 flash, 7 network. */

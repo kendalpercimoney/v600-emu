@@ -21,9 +21,9 @@ def build(m, flip_open=True, sim_card=True):
 
 def set_flip(m, open_):
     """Flip sensor: open (main display) or closed (the UI moves to the outer display)."""
-    _lib().v600_flip(m.c, 1 if open_ else 0)
+    _lib().board_flip(m.c, 1 if open_ else 0)
 
 
 def press(m, name, down=True):
     """A key by name (devices.Keypad.CODES, or 'red': the power key on the PCAP)."""
-    _lib().v600_press(m.c, -1 if name == 'red' else Keypad.INDEX[name], 1 if down else 0)
+    _lib().board_press(m.c, -1 if name == 'red' else Keypad.INDEX[name], 1 if down else 0)

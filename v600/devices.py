@@ -22,8 +22,8 @@ def _lib():
     if not getattr(lib, '_declared', False):
         for name, res, args in [
                 ('v600_machine_new', p, [ctypes.c_char_p, i64]), ('v600_reset', None, [p]),
-                ('v600_build', None, [p, i, i]), ('v600_press', None, [p, i, i]),
-                ('v600_flip', None, [p, i]), ('v600_part', p, [p, i]),
+                ('v600_build', None, [p, i, i]), ('board_press', None, [p, i, i]),
+                ('board_flip', None, [p, i]), ('v600_part', p, [p, i]),
                 ('machine_set_log', None, [p, LOG]), ('machine_set_host_hook', None, [p, HOST_HOOK]),
                 ('machine_set_host_timer', None, [p, HOST_TIMER]),
                 ('machine_set_host', None, [p, HOST_DEVICE]),

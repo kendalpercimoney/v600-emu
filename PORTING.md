@@ -74,7 +74,14 @@ Same names, same docstrings with the firmware addresses, ported one at a time.
 - **Once all are ported, the C core is the only implementation.** The Python package
   becomes a thin `ctypes` binding (`v600/core.py`) plus the tools. No duplicated logic.
 
-### 3. Public API (`core/v600.h`), the only thing the targets see
+### 3. Public API (`core/v600.h`), the only thing the targets see — done (2026-11-17)
+Result: `core/v600.h` / `v600.c`: create from the superfile and a saved state, run for a
+span of phone time, keys and flip, both displays as RGBA with change serials, PCM and MP3
+clip events, the phone's state for storage, the log. `make api-test` (tests/api_test.c)
+boots, opens the menu, dials, hears the ringing tone, closes the flip, saves and reboots
+from the state, all through this interface alone.
+
+Plan as written:
 ```c
 v600_t *v600_create(const uint8_t *superfile, size_t n, const uint8_t *flash_state, size_t m);
 int     v600_run(v600_t *, uint32_t microseconds);           /* real time to emulate */

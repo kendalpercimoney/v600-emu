@@ -199,8 +199,8 @@ int        network_from_phone(network_t *, uint8_t *kinds, int max);
 machine_t *v600_machine_new(const uint8_t *superfile, int64_t n);
 void       v600_reset(machine_t *);
 void       v600_build(machine_t *, int flip_open, int sim_card);
-void       v600_press(machine_t *, int key, int down);      /* KEY_* order, -1 = red */
-void       v600_flip(machine_t *, int open);
+void       board_press(machine_t *, int key, int down);      /* KEY_* order, -1 = red */
+void       board_flip(machine_t *, int open);
 void      *v600_part(machine_t *, int which);
 void       machine_set_log(machine_t *, log_fn);
 void       machine_set_host_hook(machine_t *, host_hook_fn);

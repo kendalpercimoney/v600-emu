@@ -31,7 +31,7 @@ EMSDK_PYTHON ?= $(firstword $(wildcard /opt/homebrew/bin/python3.12 /usr/local/b
 EMCC         := EM_CONFIG=$(EMSDK)/.emscripten EMSDK_PYTHON=$(EMSDK_PYTHON) $(EMSDK)/upstream/emscripten/emcc
 API          := v600_create v600_destroy v600_run v600_seconds v600_set_time v600_key v600_flip v600_incoming_call v600_hang_up v600_incoming_sms v600_lcd \
                 v600_lcd_serial v600_outer v600_outer_serial v600_audio v600_media \
-                v600_state_ready v600_state_changes v600_save_state v600_set_log malloc free
+                v600_state_ready v600_state_changes v600_save_state v600_vibrator v600_set_log malloc free
 EMFLAGS      := -O3 -flto -std=c99 -Wall -Wno-unused-parameter \
                 -sMODULARIZE -sEXPORT_NAME=V600Core -sENVIRONMENT=web,worker \
                 -sINITIAL_MEMORY=192MB -sMAXIMUM_MEMORY=512MB -sALLOW_MEMORY_GROWTH \

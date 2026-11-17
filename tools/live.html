@@ -31,6 +31,9 @@
   aside { max-width: 340px; color: var(--muted); }
   aside h1 { font-size: 18px; color: var(--text); margin: 4px 0 8px; }
   #log { font: 12px ui-monospace, monospace; white-space: pre-wrap; margin-top: 12px; }
+  .buzz { animation: buzz 0.08s linear infinite; }          /* the vibrator is running */
+  @keyframes buzz { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-2px, 1px); }
+                    75% { transform: translate(2px, -1px); } }
   .outer { background: var(--bezel); border-radius: 8px; padding: 6px; display: inline-block; margin: 6px 0 4px; }
   .outer img { display: block; width: 288px; max-width: 100%; image-rendering: pixelated; border-radius: 3px; }
   .controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
@@ -189,6 +192,7 @@ setInterval(async () => {
     document.getElementById('status').textContent =
       `Phone time ${s.seconds}s` + (s.lag > 0.5 ? ` (running ${s.lag}s behind real time)` : '');
     document.getElementById('log').textContent = s.log.join('\n');
+    phoneEl.classList.toggle('buzz', !!s.vibrate);
     document.getElementById('stopped').textContent = s.stopped || '';
     if (s.flip_open !== flipOpen) showFlip(s.flip_open);
   } catch (e) {}

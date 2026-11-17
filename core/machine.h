@@ -254,6 +254,7 @@ int         pmic_int_level(pmic_t *);
 void        pmic_power_key(pmic_t *, int down);
 void        pmic_start_clock(pmic_t *, machine_t *, uint32_t ips, int64_t now);   /* local time, s since 1970 */
 int64_t     pmic_time(pmic_t *);                       /* -1 until started */
+int         pmic_vibrator(pmic_t *);                   /* 1 while the motor runs */
 qspi_t     *qspi_new(machine_t *, pmic_t *, ati_t *);
 dsp_t      *dsp_new(machine_t *);
 void        dsp_set_audio(dsp_t *, audio_t *);

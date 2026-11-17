@@ -36,7 +36,7 @@ from PIL import Image  # noqa: E402
 from v600 import board, fwlog  # noqa: E402
 from v600.board import CPU_IPS  # noqa: E402
 from v600.machine import Machine  # noqa: E402
-from v600.devices import Keypad  # noqa: E402
+from v600.devices import Keypad, PART_PMIC, _lib  # noqa: E402
 
 PAGE = Path(__file__).with_name('live.html')
 WEB = Path(__file__).resolve().parent.parent / 'web'
@@ -210,7 +210,8 @@ class Phone:
     def status(self):
         lag = (time.monotonic() - self.wall0) - (self.m.insns - self.virt0) / CPU_IPS
         return {'seconds': round(self.m.insns / CPU_IPS, 1), 'lag': round(lag, 2),
-                'log': self.messages[-6:], 'flip_open': self.flip_open, 'stopped': self.stopped}
+                'log': self.messages[-6:], 'flip_open': self.flip_open, 'stopped': self.stopped,
+                'vibrate': bool(_lib().pmic_vibrator(_lib().v600_part(self.m.c, PART_PMIC)))}
 
 
 def png(img):

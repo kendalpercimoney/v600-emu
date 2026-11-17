@@ -75,6 +75,7 @@ function wasmCore(on) {
     else if (m.t === 'audio') on.audio(m.start, new Int16Array(m.pcm));
     else if (m.t === 'media') on.media(m.id, m.at, m.mp3);
     else if (m.t === 'status') on.status(m);
+    else if (m.t === 'vibrate') hw('vibrate', m.on);
     else if (m.t === 'state') V600Store.saveState(m.bytes);
     else if (m.t === 'error') on.error(m.text);
   }
@@ -180,6 +181,7 @@ const on = {
   media(id, at, mp3) { if (actx) playClip(id, at, mp3); },
   status(s) {
     if (s.stopped) console.warn('emulator stopped:', s.stopped);
+    if (s.vibrate !== undefined && s.vibrate !== lastVibrate) hw('vibrate', lastVibrate = s.vibrate);
     if (s.flip_open !== undefined) setState({ open: !!s.flip_open });
   },
   error(text) {
@@ -198,6 +200,7 @@ const madeUpNumber = () => '07700900' + String(Math.floor(Math.random() * 1000))
 const SAMPLE_TEXTS = ['Running late, be there in 10', 'Did you see the match last night?',
   'Call me when you get this', 'Happy birthday! x', 'Pub at 8?'];
 
+let lastVibrate = false;
 const listeners = [];
 function setState(changes) {
   let changed = false;

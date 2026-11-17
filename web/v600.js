@@ -77,6 +77,7 @@ function wasmCore(on) {
     else if (m.t === 'status') on.status(m);
     else if (m.t === 'vibrate') hw('vibrate', m.on);
     else if (m.t === 'backlight') on.backlight(m.on);
+    else if (m.t === 'camera') on.camera(m.on);
     else if (m.t === 'power') on.power(m.on);
     else if (m.t === 'light') on.light(m.rgb ? '#' + m.rgb.toString(16).padStart(6, '0') : null);
     else if (m.t === 'state') V600Store.saveState(m.bytes);
@@ -130,6 +131,7 @@ function wasmCore(on) {
     call(number) { post({ t: 'call', number }); },
     hangUp() { post({ t: 'hangup' }); },
     sms(from, text) { post({ t: 'sms', from, text }); },
+    frame(rgba, w, h) { post({ t: 'frame', rgba, w, h }); },
   };
 }
 
@@ -167,6 +169,19 @@ const on = {
     else lcd.drawImage(img, 0, 0, 176, 220);
     if (!backlit) { lcd.fillStyle = 'rgba(0, 0, 0, 0.65)'; lcd.fillRect(0, 0, 176, 220); }
     OS.frame++;
+  },
+  // The camera's viewfinder: pictures from the host (HW.camera.frame, e.g. the iPhone's
+  // camera), else a built-in scene, a few times a second.
+  camera(running) {
+    clearInterval(cameraTimer);
+    if (!running) { try { window.HW.camera.stop(); } catch (e) {} return; }
+    try { window.HW.camera.start(); } catch (e) {}
+    cameraTimer = setInterval(() => {
+      let ok = false;
+      try { ok = window.HW.camera.frame(camCtx, CAM_W, CAM_H); } catch (e) {}
+      if (!ok) builtInScene(camCtx, performance.now() / 1000);
+      core.frame(camCtx.getImageData(0, 0, CAM_W, CAM_H).data.buffer, CAM_W, CAM_H);
+    }, 150);
   },
   // Switched off (red held) or on again: dark displays, OS.st.power for the host.
   power(up) {
@@ -235,6 +250,23 @@ const madeUpNumber = () => '07700900' + String(Math.floor(Math.random() * 1000))
 const SAMPLE_TEXTS = ['Running late, be there in 10', 'Did you see the match last night?',
   'Call me when you get this', 'Happy birthday! x', 'Pub at 8?'];
 
+const CAM_W = 176, CAM_H = 144;
+const camCanvas = document.createElement('canvas');
+camCanvas.width = CAM_W; camCanvas.height = CAM_H;
+const camCtx = camCanvas.getContext('2d', { willReadFrequently: true });
+let cameraTimer = null;
+// Without a camera: sky, hills and a sun moving across, so the viewfinder visibly works.
+function builtInScene(ctx, t) {
+  const sky = ctx.createLinearGradient(0, 0, 0, CAM_H);
+  sky.addColorStop(0, '#3a7bd5'); sky.addColorStop(1, '#bfe3ff');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, CAM_W, CAM_H);
+  ctx.fillStyle = '#ffd34d';
+  ctx.beginPath(); ctx.arc((t * 20) % (CAM_W + 40) - 20, 40, 16, 0, 2 * Math.PI); ctx.fill();
+  ctx.fillStyle = '#3d8b3d';
+  ctx.beginPath(); ctx.moveTo(0, CAM_H);
+  for (let x = 0; x <= CAM_W; x += 8) ctx.lineTo(x, 100 + 12 * Math.sin(x / 25 + t / 3));
+  ctx.lineTo(CAM_W, CAM_H); ctx.fill();
+}
 let lastVibrate = false, lightOn = false, lightCss = '#3d9bff';
 const listeners = [];
 function setState(changes) {

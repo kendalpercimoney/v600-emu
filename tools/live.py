@@ -68,6 +68,17 @@ SAMPLE_TEXTS = ['Running late, be there in 10', 'Did you see the match last nigh
                 'Call me when you get this', 'Happy birthday! x', 'Pub at 8?']
 
 
+def camera_scene(t):
+    """What the camera sees here: sky, a sun moving across and hills (no real camera)."""
+    y, x = np.mgrid[0:144, 0:176]
+    img = np.zeros((144, 176, 3), np.uint8)
+    img[...] = np.stack([58 + y * 0.9, 123 + y * 0.6, 213 + y * 0.2], -1).clip(0, 255)
+    sun = (x - ((t * 20) % 216 - 20)) ** 2 + (y - 40) ** 2 < 16 ** 2
+    img[sun] = (255, 211, 77)
+    img[y > 100 + 12 * np.sin(x / 25 + t / 3)] = (61, 139, 61)
+    return Image.fromarray(img)
+
+
 def made_up_number():
     """A UK mobile number from the range Ofcom keeps for drama (07700 900000-900999)."""
     return '07700900' + ''.join(random.choice('0123456789') for _ in range(3))
@@ -104,6 +115,7 @@ class Phone:
         self.flip_open = True
         self.stopped = None
         self.off = False                    # switched itself off (red held)
+        self.last_frame = 0.0               # last picture given to the camera
         self.saved_writes = 0
         self.last_save = time.monotonic()
         self.wall0, self.virt0 = time.monotonic(), 0
@@ -150,6 +162,9 @@ class Phone:
                 self.save(force=True)
                 self.off = True
                 print('the phone switched itself off (hold End to switch it on)', flush=True)
+            if m.ati.camera_on and time.monotonic() - self.last_frame > 0.15:
+                self.last_frame = time.monotonic()
+                m.ati.camera_frame(camera_scene(self.last_frame))
             if ahead < -2.0:                    # can't keep up: let the clock slip
                 self.wall0 += -ahead - 2.0
             if time.monotonic() - self.last_save > 5:

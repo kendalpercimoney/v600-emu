@@ -592,6 +592,85 @@ static void outer_write(outer_t *o, const uint8_t *data, int n, int ncommands) {
     o->updates++;
 }
 
+/* ---- video overlay: the camera viewfinder ------------------------------------------------
+   The camera app draws its viewfinder area in a key colour and the chip shows a YUV 4:2:0
+   picture there on the way to the display (the frame in memory keeps the key colour).
+   +0x434 bit 0 = overlay on; +0x438 low half = the key colour (0x0821); +0x43C / +0x444 /
+   +0x44C = Y / U / V planes with pitches +0x440 / +0x448 / +0x450; +0x454 / +0x458 = width /
+   height << 16 (176 x 144). The capture side fills two such frames (also at +0x55C.. and
+   +0xE58.. / +0xE64..); the sensor's picture comes from the host (ati_camera_frame). Where
+   the overlay sits on screen is taken from the keyed area's top-left corner. */
+#define OVL_CTRL 0x434
+#define OVL_KEY 0x438
+#define OVL_W 0x454
+#define OVL_H 0x458
+
+int ati_overlay_on(ati_t *c) { return reg(c, OVL_CTRL) & 1; }
+
+static void yuv_to_rgb(int y, int u, int v, uint8_t *o) {
+    int c = y - 16, d = u - 128, e = v - 128;
+    int r = (298 * c + 409 * e + 128) >> 8, g = (298 * c - 100 * d - 208 * e + 128) >> 8, b = (298 * c + 516 * d + 128) >> 8;
+    o[0] = r < 0 ? 0 : r > 255 ? 255 : r; o[1] = g < 0 ? 0 : g > 255 ? 255 : g; o[2] = b < 0 ? 0 : b > 255 ? 255 : b;
+}
+
+/* The displayed frame (GRAPHIC_OFFSET, GRAPHIC_PITCH) as RGBA, w x h, overlay included. */
+void ati_screen(ati_t *c, uint8_t *rgba, int w, int h) {
+    uint32_t base = reg(c, 0x418), pitch = reg(c, 0x41C) ? reg(c, 0x41C) : 0x160;
+    int ovl = ati_overlay_on(c), ox = w, oy = h;
+    uint32_t key = reg(c, OVL_KEY) & 0xFFFF;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            uint32_t a = (base + y * pitch + 2 * x) & (MEM_SIZE - 1), v = c->mem[a] | c->mem[(a + 1) & (MEM_SIZE - 1)] << 8;
+            uint8_t *o = rgba + 4 * (y * w + x);
+            o[0] = ((v >> 11) & 31) * 255 / 31; o[1] = ((v >> 5) & 63) * 255 / 63; o[2] = (v & 31) * 255 / 31; o[3] = 255;
+            if (ovl && v == key) {
+                if (y < oy) oy = y;
+                if (x < ox) ox = x;
+                o[3] = 0;                               /* marks the keyed pixels for below */
+            }
+        }
+    if (!ovl || oy == h) return;
+    uint32_t ya = reg(c, 0x43C), yp = reg(c, 0x440), ua = reg(c, 0x444), up = reg(c, 0x448), va = reg(c, 0x44C), vp = reg(c, 0x450);
+    int sw = (int)(reg(c, OVL_W) >> 16), sh = (int)(reg(c, OVL_H) >> 16);
+    for (int y = oy; y < h; y++)
+        for (int x = ox; x < w; x++) {
+            uint8_t *o = rgba + 4 * (y * w + x);
+            if (o[3]) continue;
+            o[3] = 255;
+            int sx = x - ox, sy = y - oy;
+            if (sx >= sw || sy >= sh) continue;
+            yuv_to_rgb(c->mem[(ya + sy * yp + sx) & (MEM_SIZE - 1)], c->mem[(ua + sy / 2 * up + sx / 2) & (MEM_SIZE - 1)],
+                       c->mem[(va + sy / 2 * vp + sx / 2) & (MEM_SIZE - 1)], o);
+        }
+}
+
+/* A picture from the camera (RGBA, any size): scaled to the overlay's frame size and stored
+   as YUV 4:2:0 in every frame the capture side uses. 0 if the camera is not running. */
+int ati_camera_frame(ati_t *c, const uint8_t *rgba, int w, int h) {
+    int sw = (int)(reg(c, OVL_W) >> 16), sh = (int)(reg(c, OVL_H) >> 16);
+    if (!ati_overlay_on(c) || sw <= 0 || sh <= 0 || w <= 0 || h <= 0) return 0;
+    static const uint32_t sets[4][3] = {{0x43C, 0x444, 0x44C}, {0x55C, 0x560, 0x564}, {0xE58, 0xE5C, 0xE60}, {0xE64, 0xE68, 0xE6C}};
+    uint32_t yp = reg(c, 0x440), cp = reg(c, 0x448);
+    for (int sy = 0; sy < sh; sy++)
+        for (int sx = 0; sx < sw; sx++) {
+            const uint8_t *s = rgba + 4 * ((sy * h / sh) * w + sx * w / sw);
+            int r = s[0], g = s[1], b = s[2];
+            int Y = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
+            int U = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128, V = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
+            for (int k = 0; k < 4; k++) {
+                uint32_t ya = reg(c, sets[k][0]), ua = reg(c, sets[k][1]), va = reg(c, sets[k][2]);
+                if (!ya) continue;
+                c->mem[(ya + sy * yp + sx) & (MEM_SIZE - 1)] = (uint8_t)Y;
+                if (!(sx & 1) && !(sy & 1)) {
+                    c->mem[(ua + sy / 2 * cp + sx / 2) & (MEM_SIZE - 1)] = (uint8_t)U;
+                    c->mem[(va + sy / 2 * cp + sx / 2) & (MEM_SIZE - 1)] = (uint8_t)V;
+                }
+            }
+        }
+    c->draws++;                                       /* the picture changed */
+    return 1;
+}
+
 /* ---- for the host ---------------------------------------------------------------------- */
 ati_t *ati_new(void) {
     ati_t *c = calloc(1, sizeof *c);

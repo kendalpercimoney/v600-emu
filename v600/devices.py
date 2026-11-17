@@ -44,7 +44,8 @@ def _lib():
                 ('machine_flash_patches', i, [p, p, p, p, i]),
                 ('flash_flush', None, [p]), ('flash_idle', i, [p]), ('flash_writes', u64, [p]),
                 ('ati_mem', p, [p]), ('ati_reg', u32, [p, u32]), ('ati_draws', u64, [p]),
-                ('ati_outer', p, [p]),
+                ('ati_outer', p, [p]), ('ati_screen', None, [p, p, i, i]),
+                ('ati_overlay_on', i, [p]), ('ati_camera_frame', i, [p, p, i, i]),
                 ('audio_pull', i, [p, ctypes.POINTER(i64), p, i]), ('audio_events', i, [p]),
                 ('audio_event', i64, [p, i, ctypes.POINTER(i), ctypes.POINTER(i),
                                       ctypes.POINTER(i64), p, i64]),
@@ -129,16 +130,21 @@ class ATIChip:
         return self.lib.ati_reg(self.ptr, r)
 
     def screen(self):
-        """The displayed frame (GRAPHIC_OFFSET, GRAPHIC_PITCH bytes per row) as RGB."""
-        base = self.reg(GRAPHIC_OFFSET)
-        pitch = self.reg(GRAPHIC_PITCH) or 0x160
+        """The displayed frame as RGB, the camera overlay included (core/ati.c)."""
         w = (self.reg(GRAPHIC_H_DISP) >> 16) or 176
         h = (self.reg(GRAPHIC_V_DISP) >> 16) or 220
-        rows = [bytes(self.mem[base + y * pitch: base + y * pitch + 2 * w]) for y in range(h)]
-        a = np.frombuffer(b''.join(rows), dtype='<u2').reshape(h, w)
-        rgb = np.dstack([((a >> 11) & 31) * 255 // 31, ((a >> 5) & 63) * 255 // 63,
-                         (a & 31) * 255 // 31]).astype(np.uint8)
-        return Image.fromarray(rgb)
+        buf = (ctypes.c_uint8 * (w * h * 4))()
+        self.lib.ati_screen(self.ptr, buf, w, h)
+        return Image.fromarray(np.frombuffer(buf, np.uint8).reshape(h, w, 4)[:, :, :3].copy())
+
+    @property
+    def camera_on(self):
+        return bool(self.lib.ati_overlay_on(self.ptr))
+
+    def camera_frame(self, img):
+        """Give the viewfinder a picture (PIL image, any size)."""
+        rgba = np.ascontiguousarray(np.asarray(img.convert('RGBA'), np.uint8))
+        return bool(self.lib.ati_camera_frame(self.ptr, rgba.ctypes.data, img.width, img.height))
 
 
 # -- sound ------------------------------------------------------------------------------------

@@ -7,6 +7,7 @@
 // Out: {t:'ready'} {t:'error', text} {t:'lcd', rgba} {t:'outer', rgba} {t:'audio', start, pcm}
 //      {t:'media', id, at, mp3|null} {t:'status', seconds, stopped} {t:'state', bytes}
 //      {t:'vibrate', on} {t:'light', rgb} (the ring lights, 0xRRGGBB, 0 = dark) {t:'backlight', on}
+//      {t:'camera', on}: the viewfinder runs; then {t:'frame', rgba, w, h} pictures come in
 //      {t:'power', on}: the phone switched itself off (red held); the red key switches it on
 //      again: a new core from the firmware and the state saved as it went off.
 'use strict';
@@ -17,7 +18,7 @@ self.V600Runner = function (post, coreUrl) {
   const STEP_MS = 10, SAVE_MS = 5000, CLOCK_MS = 60000;
   let M, p, buf, stopped = null;
   let t0 = 0, phone0 = 0, lcdSerial = -1, outerSerial = -1, changes = -1n, lastSave = 0, lastClock = 0;
-  let vibrating = 0, light = 0, backlight = -1;
+  let vibrating = 0, light = 0, backlight = -1, camera = 0, frameAt = 0, frameLen = 0;
   let firmware = null, state = null, open = true, off = false;
 
   // The phone keeps local time: seconds since 1970 as read on a wall clock here. Set again
@@ -55,7 +56,8 @@ self.V600Runner = function (post, coreUrl) {
     buf = M._malloc(LCD + OUTER + 2 * AUDIO + 64);
     if (!open) M._v600_flip(p, 0);
     lcdSerial = outerSerial = backlight = -1;
-    vibrating = light = 0;
+    vibrating = light = camera = 0;
+    frameAt = frameLen = 0;
     off = false;
     setClock();
     changes = M._v600_state_changes(p);
@@ -123,6 +125,8 @@ self.V600Runner = function (post, coreUrl) {
     }
     const v = M._v600_vibrator(p);
     if (v !== vibrating) { vibrating = v; post({ t: 'vibrate', on: !!v }); }
+    const cam = M._v600_camera_on(p);
+    if (cam !== camera) { camera = cam; post({ t: 'camera', on: !!cam }); }
     const b = M._v600_backlight(p);
     if (b !== backlight) { backlight = b; post({ t: 'backlight', on: !!b }); }
     const l = M._v600_lights(p) >>> 0;
@@ -157,6 +161,12 @@ self.V600Runner = function (post, coreUrl) {
       if (msg.t === 'key') M._v600_key(p, msg.key, msg.down ? 1 : 0);
       else if (msg.t === 'flip') M._v600_flip(p, msg.open ? 1 : 0);
       else if (msg.t === 'save') save(true);
+      else if (msg.t === 'frame') {                     // a camera picture
+        const px = new Uint8Array(msg.rgba);
+        if (px.length > frameLen) { if (frameAt) M._free(frameAt); frameAt = M._malloc(px.length); frameLen = px.length; }
+        M.HEAPU8.set(px, frameAt);
+        M._v600_camera_frame(p, frameAt, msg.w, msg.h);
+      }
       else if (msg.t === 'call') {
         const bytes = new TextEncoder().encode(msg.number + '\0'), at = M._malloc(bytes.length);
         M.HEAPU8.set(bytes, at);

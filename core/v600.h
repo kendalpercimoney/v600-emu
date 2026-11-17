@@ -62,6 +62,11 @@ uint32_t v600_lcd_serial(v600_t *);
 uint32_t v600_outer(v600_t *, uint8_t *rgba, uint32_t on, uint32_t off);
 uint32_t v600_outer_serial(v600_t *);
 
+/* The camera: 1 while the viewfinder runs; then give it pictures (RGBA, w x h, any size:
+   scaled to its 176 x 144), a few times a second. Returns 0 if not running. */
+int      v600_camera_on(v600_t *);
+int      v600_camera_frame(v600_t *, const uint8_t *rgba, int w, int h);
+
 /* Sound made since the last call: 16-bit mono PCM at V600_AUDIO_RATE, up to max samples;
    *first = the first sample's index on the phone's sound timeline. */
 int      v600_audio(v600_t *, int16_t *out, int max, int64_t *first);

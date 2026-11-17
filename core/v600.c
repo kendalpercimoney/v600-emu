@@ -143,20 +143,13 @@ uint32_t v600_lcd_serial(v600_t *p) {
 }
 
 uint32_t v600_lcd(v600_t *p, uint8_t *rgba) {
-    ati_t *c = p->m->ati;
-    const uint8_t *mem = ati_mem(c);
-    uint32_t base = ati_reg(c, 0x418), pitch = ati_reg(c, 0x41C) ? ati_reg(c, 0x41C) : 0x160;
-    for (int y = 0; y < V600_LCD_H; y++)
-        for (int x = 0; x < V600_LCD_W; x++) {
-            uint32_t a = (base + y * pitch + 2 * x) & 0x3FFFFF, v = mem[a] | mem[(a + 1) & 0x3FFFFF] << 8;
-            uint8_t *o = rgba + 4 * (y * V600_LCD_W + x);
-            o[0] = ((v >> 11) & 31) * 255 / 31;
-            o[1] = ((v >> 5) & 63) * 255 / 63;
-            o[2] = (v & 31) * 255 / 31;
-            o[3] = 255;
-        }
+    ati_screen(p->m->ati, rgba, V600_LCD_W, V600_LCD_H);
     return v600_lcd_serial(p);
 }
+
+/* -- the camera ------------------------------------------------------------------------------ */
+int v600_camera_on(v600_t *p) { return ati_overlay_on(p->m->ati); }
+int v600_camera_frame(v600_t *p, const uint8_t *rgba, int w, int h) { return ati_camera_frame(p->m->ati, rgba, w, h); }
 
 uint32_t v600_outer_serial(v600_t *p) { return (uint32_t)ati_outer(p->m->ati)->updates; }
 

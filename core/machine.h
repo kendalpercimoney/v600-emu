@@ -247,6 +247,9 @@ void        ati_write_tail(ati_t *, uint32_t addr, const uint8_t *data, int n);
 int         ati_serial_transfer(ati_t *, const uint8_t *data, int n, uint8_t *out);
 uint8_t    *ati_mem(ati_t *);
 uint32_t    ati_reg(ati_t *, uint32_t r);
+void        ati_screen(ati_t *, uint8_t *rgba, int w, int h);   /* the display, overlay included */
+int         ati_overlay_on(ati_t *);
+int         ati_camera_frame(ati_t *, const uint8_t *rgba, int w, int h);
 uint64_t    ati_draws(ati_t *);
 outer_t    *ati_outer(ati_t *);
 dma_t      *dma_new(machine_t *, ati_t *);

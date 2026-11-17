@@ -19,7 +19,8 @@ computer, from the boot animation through the menus.
 - Sound: key clicks, the power-up tune, tone, MIDI and MP3 ringtones. The phone's DSP runs
   from ROM we don't have, so its audio side is recreated from the commands the firmware
   sends it (`core/audio.c`, with MIDI synthesis; MP3 is decoded by the browser).
-- The camera app opens (black viewfinder: the sensor answers, but makes no picture yet).
+- The camera: the viewfinder shows the host's camera (the iPhone's, in the app) or a built-in
+  scene, and Capture freezes the picture (storing it does not finish yet).
 - Runs in real time in a browser with clickable keys (`tools/live.py`); press "Sound" on the
   page to hear it.
 
@@ -105,6 +106,6 @@ instead (handy while changing the core: no app rebuild).
 ## Next
 
 - Text messages from the pretend network; the call voice path.
-- A camera picture.
+- Storing a captured photo (the chip's JPEG side).
 
 This is an independent hobby project, not affiliated with or endorsed by Motorola.

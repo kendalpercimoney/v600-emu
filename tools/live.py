@@ -29,6 +29,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import numpy as np  # noqa: E402
 from PIL import Image  # noqa: E402
 
 from v600 import board, fwlog  # noqa: E402
@@ -37,6 +38,7 @@ from v600.machine import Machine  # noqa: E402
 from v600.devices import Keypad  # noqa: E402
 
 PAGE = Path(__file__).with_name('live.html')
+WEB = Path(__file__).resolve().parent.parent / 'web'
 
 
 class WallClock:
@@ -192,6 +194,7 @@ def handler(phone):
             self.send_response(200)
             self.send_header('Content-Type', ctype)
             self.send_header('Cache-Control', 'no-store')
+            self.send_header('Access-Control-Allow-Origin', '*')      # web/ in the app
             self.send_header('Content-Length', str(len(body)))
             self.end_headers()
             self.wfile.write(body)
@@ -205,6 +208,15 @@ def handler(phone):
                 self.send(phone.frame(), 'image/png')
             elif u.path == '/outer.png':
                 self.send(phone.outer(), 'image/png')
+            elif u.path == '/outer.bits':                # 32 x 96 pixels, 1 bit each, rows
+                self.send(np.packbits(phone.m.ati.outer.pixels != 0).tobytes(), 'application/octet-stream')
+            elif u.path.startswith('/web/'):             # the app's front end (web/)
+                f = (WEB / u.path[5:]).resolve()
+                if WEB in f.parents and f.is_file():
+                    types = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript'}
+                    self.send(f.read_bytes(), types.get(f.suffix, 'application/octet-stream'))
+                else:
+                    self.send_error(404)
             elif u.path == '/key':
                 name = q.get('name', [''])[0]
                 if name in Keypad.CODES or name == 'red':

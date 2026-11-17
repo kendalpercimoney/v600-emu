@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>V600 emulator</title>
+<!-- The emulated V600 behind the firmware contract a host app expects (see v600.js):
+     #lcd and #ext canvases, OS.key / keyUp / setOpen, OS.frame, OS.st, window.HW. -->
+<style>
+  body { margin: 0; background: #000; display: flex; gap: 12px; padding: 12px; align-items: flex-start; }
+  canvas { image-rendering: pixelated; background: #000; }
+  #lcd { width: 352px; height: 440px; }
+  #ext { width: 288px; height: 96px; }
+</style>
+</head>
+<body>
+<canvas id="lcd" width="176" height="220"></canvas>
+<canvas id="ext" width="96" height="32"></canvas>
+<script src="v600.js"></script>
+</body>
+</html>

@@ -110,6 +110,8 @@ void v600_key(v600_t *p, int key, int down) {
     }
 }
 void v600_flip(v600_t *p, int open) { board_flip(p->m, open); }
+int v600_incoming_call(v600_t *p, const char *number) { return network_incoming_call(p->m->network, number); }
+int v600_hang_up(v600_t *p) { return network_hang_up(p->m->network); }
 void v600_set_time(v600_t *p, int64_t now) { pmic_start_clock(p->m->pmic, p->m, CPU_IPS, now); }
 
 /* -- displays ------------------------------------------------------------------------------ */

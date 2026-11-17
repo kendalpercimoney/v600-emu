@@ -56,6 +56,8 @@ function httpCore(server, on) {
   return {
     key(name, down) { get(`/key?name=${encodeURIComponent(name)}&down=${down ? 1 : 0}`); },
     flip(open) { get(`/control?do=flip&open=${open ? 1 : 0}`); },
+    call(number) { get(`/control?do=call&number=${encodeURIComponent(number)}`); },
+    hangUp() { get('/control?do=hangup'); },
   };
 }
 
@@ -120,6 +122,8 @@ function wasmCore(on) {
   return {
     key(name, down) { post({ t: 'key', key: name === 'red' ? -1 : KEY_ORDER.indexOf(name), down }); },
     flip(open) { post({ t: 'flip', open }); },
+    call(number) { post({ t: 'call', number }); },
+    hangUp() { post({ t: 'hangup' }); },
   };
 }
 
@@ -212,7 +216,13 @@ const OS = {
   powerOff() { core.key('red', true); setTimeout(() => core.key('red', false), 2500); },
   onState(cb) { listeners.push(cb); },
   setSpeakerFilter() {},                          // the speaker model: not yet
-  incomingCall() {}, incomingMessage() {},        // the pretend network: not yet
+  // The pretend network: someone calls (default: a made-up number from the range Ofcom
+  // keeps for drama), and they hang up.
+  incomingCall(number) {
+    core.call(number || '07700900' + String(Math.floor(Math.random() * 1000)).padStart(3, '0'));
+  },
+  endCall() { core.hangUp(); },
+  incomingMessage() {},                           // text messages: not yet
 };
 const Snd = {
   ac() {

@@ -20,6 +20,7 @@ import io
 import os
 import json
 import queue
+import random
 import sys
 import threading
 import time
@@ -61,6 +62,11 @@ class WallClock:
 
 MIN_HOLD = 0.1                              # seconds a key stays down at least
 STATE = Path(__file__).resolve().parent.parent / 'state' / 'flash.bin'
+
+
+def made_up_number():
+    """A UK mobile number from the range Ofcom keeps for drama (07700 900000-900999)."""
+    return '07700900' + ''.join(random.choice('0123456789') for _ in range(3))
 
 
 class Phone:
@@ -153,6 +159,10 @@ class Phone:
         elif what == 'flip':
             self.flip_open = args[0]
             board.set_flip(self.m, self.flip_open)
+        elif what == 'call':
+            self.m.network.incoming_call(args[0])
+        elif what == 'hangup':
+            self.m.network.hang_up()
         elif what == 'restart':
             self.save()
             self.boot()
@@ -248,8 +258,10 @@ def handler(phone):
                 what = q.get('do', [''])[0]
                 if what == 'flip':
                     phone.commands.put(('flip', q.get('open', ['1'])[0] == '1'))
-                elif what in ('restart', 'factory', 'save'):
+                elif what in ('restart', 'factory', 'save', 'hangup'):
                     phone.commands.put((what,))
+                elif what == 'call':
+                    phone.commands.put(('call', q.get('number', [''])[0] or made_up_number()))
                 self.send(b'ok', 'text/plain')
             elif u.path == '/audio':
                 self.send(phone.sound(), 'application/octet-stream')

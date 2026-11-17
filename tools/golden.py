@@ -17,9 +17,12 @@ RMS (within SOUND_TOLERANCE): the synthesis uses numpy's sin / exp and random nu
 the reference, C's in the port, so samples may differ in the last bits; everything the
 CPU can observe (replies, their timing) is exact.
 
-Deliberate changes since the reference: call.jsonl digests 200-202 (dialling 555) carry
-sound, the keypad's DTMF tones, silent in the reference (2026-11-17); every other field
-there is still the reference's.
+Deliberate changes since the reference (2026-11-17):
+- The power IC's headset-detect line (PSTAT bit 12) reads "no headset"; before, the phone
+  thought a headset was in (it answered incoming calls by itself). Fixed in the reference
+  too (build/reference/v600/periph.py, PSTAT_IDLE), and the traces recorded from it.
+- call.jsonl digests 200-202 (dialling 555) carry sound, the keypad's DTMF tones, silent in
+  the reference; every other field there is the reference's.
 """
 import json
 import os

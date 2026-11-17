@@ -26,10 +26,12 @@
    ISR bit 0. The power key (the red End key) is ISR bit 7 (ONOFF), latched on each change;
    PSTAT holds the line levels, active low: bit 7 = power key, bit 8 = ONOFF2. Released =
    both set; the debouncer (0x1088EA3A) reads bit 7 clear and bit 8 set as "power key held",
-   which turns the phone off after ~2 s. The PCAP's interrupt pin is edge port INT1. */
+   which turns the phone off after ~2 s. Bit 12 is the headset detect, low = a headset is
+   plugged in (the phone then answers calls by itself and shows the headset icon): idle, no
+   headset. The PCAP's interrupt pin is edge port INT1. */
 enum { ISR = 0, MSR = 1, PSTAT = 2, ADC = 9, ADR = 10, TOD = 14, TODA = 15, DAY = 16, DAYA = 17 };
 #define ONOFF (1u << 7)
-#define PSTAT_IDLE ((1u << 7) | (1u << 8))
+#define PSTAT_IDLE ((1u << 7) | (1u << 8) | (1u << 12))
 #define ASC (1u << 22)
 #define ADCDONE 1u
 /* 10-bit readings for bank 0: coin cell, battery, B+, charger (none), battery thermistor

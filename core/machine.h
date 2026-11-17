@@ -194,6 +194,8 @@ void       overrides_install(machine_t *, int sim_card);
 void       fwlog_install(machine_t *);
 network_t *network_new(machine_t *, uint64_t ips);
 int        network_registered(network_t *);
+int         network_incoming_call(network_t *, const char *number);
+int         network_hang_up(network_t *);
 int        network_from_phone(network_t *, uint8_t *kinds, int max);
 /* board.c */
 machine_t *v600_machine_new(const uint8_t *superfile, int64_t n);

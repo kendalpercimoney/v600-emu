@@ -179,7 +179,16 @@ void fwlog_install(machine_t *m) { machine_hook(m, VSPRINTF, vsprintf_hook, 0, 0
          transaction, length, L3]; 0x15040 data from the network [protocol, transaction,
          length (2 bytes), L3]; 0x15003 connection released by the phone.
      An outgoing call: SETUP -> CALL PROCEEDING, ALERTING, CONNECT (answered by CONNECT
-     ACKNOWLEDGE); DISCONNECT -> RELEASE -> RELEASE COMPLETE. The far end never hangs up.
+     ACKNOWLEDGE); DISCONNECT -> RELEASE -> RELEASE COMPLETE.
+     An incoming call: 0x15042 [protocol, transaction, length (2 bytes), L3] delivers the
+     first message of a transaction the network opens (call control's table at 0x104123D8
+     takes SETUP, RELEASE COMPLETE or STATUS there; 0x15040's, at 0x104123A4, the rest).
+     SETUP (bearer: speech; calling party number) -> the phone's CALL CONFIRMED, ALERTING;
+     answered, its CONNECT -> CONNECT ACKNOWLEDGE. The network's messages carry transaction
+     flag 0 (it opened the transaction), the phone's flag 1; the MMCM transaction field
+     holds it in bit 3 (8 | value), or call control releases the connection at once.
+     The far end hangs up: DISCONNECT (cause 16, normal clearing) -> the phone's RELEASE ->
+     RELEASE COMPLETE.
    Signal strength: layer 1 sends 0x11810 (built at 0x108D6884) to the port at 0x121B7020:
      +0 level in percent (0, 10, 30, 50, 70, 90 for 0-5 bars), +1 dBm + 110. */
 #define CREATE_MESSAGE 0x1087BEF4u      /* (size, id, 0, 0) -> message body */
@@ -195,17 +204,20 @@ void fwlog_install(machine_t *m) { machine_hook(m, VSPRINTF, vsprintf_hook, 0, 0
 #define MMCM_REL_REQ 0x15003u
 #define MMCM_EST_CNF 0x15020u
 #define MMCM_DATA_IND 0x15040u
+#define MMCM_EST_IND 0x15042u
 #define MMCM_PORT 0x10A1D4C4u
 #define CALL_CONTROL 3
 enum { ALERTING = 0x01, CALL_PROCEEDING = 0x02, SETUP = 0x05, CONNECT = 0x07,
-       DISCONNECT = 0x25, RELEASE = 0x2D, RELEASE_COMPLETE = 0x2A };
+       CONNECT_ACK = 0x0F, DISCONNECT = 0x25, RELEASE = 0x2D, RELEASE_COMPLETE = 0x2A };
+#define INCOMING_TI 0                   /* transaction the network opens for a call */
+#define TI_FLAG 8                       /* in the MMCM transaction field: not opened by the phone */
 #define ANSWER_AFTER 4.0                /* seconds of ringing before the far end answers */
 #define REGISTRATION_DELAY 2.0
 static const uint8_t SIGNAL[2] = {90, 110 - 65};                  /* 5 bars, -65 dBm */
 static const uint8_t PLMN[3] = {0x00, 0xF1, 0x10};               /* MCC 001, MNC 01 */
 static const uint8_t LAC[2] = {0x00, 0x01};
 
-enum { EV_REGISTER, EV_CONNECT, EV_TO_PHONE };
+enum { EV_REGISTER, EV_CONNECT, EV_TO_PHONE, EV_INCOMING };
 typedef struct { uint64_t due; int kind, call; uint32_t a, b, c; } net_event_t;
 
 struct network {
@@ -213,6 +225,9 @@ struct network {
     uint64_t ips;
     int have_port, have_call_port, registered;
     uint32_t port, call_port;
+    int in_call;                              /* a call transaction is open */
+    uint32_t call_ti, call_first;             /* its transaction and the phone's first L3 byte */
+    char caller[24];                          /* the incoming call's number */
     net_event_t events[64]; int nevents;
     uint8_t from_phone[256]; int nfrom;       /* call-control types the phone sent (tests) */
 };
@@ -264,14 +279,56 @@ static void connect(network_t *n, uint32_t protocol, uint32_t transaction) {
 }
 
 static void to_phone(network_t *n, uint32_t transaction, uint32_t first, uint32_t kind) {
-    uint8_t body[6] = {CALL_CONTROL, (uint8_t)transaction, 0, 2, (uint8_t)(first ^ 0x80), (uint8_t)kind};
-    post(n, MMCM_DATA_IND, body, 6, n->call_port);      /* the other end of the transaction */
+    uint8_t body[10] = {CALL_CONTROL, (uint8_t)transaction, 0, 2, (uint8_t)(first ^ 0x80), (uint8_t)kind};
+    int len = 6;
+    if (kind == DISCONNECT) {                           /* cause: 16, normal call clearing */
+        const uint8_t cause[4] = {0x08, 0x02, 0xE0, 0x90};
+        memcpy(body + 6, cause, 4);
+        body[3] += 4;
+        len += 4;
+    }
+    if (kind == RELEASE_COMPLETE) n->in_call = 0;
+    post(n, MMCM_DATA_IND, body, len, n->call_port);    /* the other end of the transaction */
+}
+
+/* SETUP for an incoming call: speech, and the caller's number (unknown type, ISDN plan). */
+static int incoming_setup(network_t *n, uint8_t *l3) {
+    int k = 0, digits = 0;
+    l3[k++] = CALL_CONTROL | INCOMING_TI << 4;
+    l3[k++] = SETUP;
+    l3[k++] = 0x04; l3[k++] = 0x01; l3[k++] = 0xA0;     /* bearer capability: speech, full rate */
+    uint8_t bcd[12] = {0};
+    for (const char *c = n->caller; *c && digits < 22; c++)
+        if (*c >= '0' && *c <= '9') { bcd[digits / 2] |= (uint8_t)((*c - '0') << (digits % 2 ? 4 : 0)); digits++; }
+    if (digits) {
+        if (digits % 2) bcd[digits / 2] |= 0xF0;
+        int nb = (digits + 1) / 2;
+        l3[k++] = 0x5C; l3[k++] = (uint8_t)(1 + nb); l3[k++] = 0x81;
+        memcpy(l3 + k, bcd, nb);
+        k += nb;
+    }
+    return k;
+}
+
+static void incoming_port(machine_t *m, void *ctx, uint32_t port) {
+    network_t *n = ctx;
+    n->call_port = port;
+    n->have_call_port = 1;
+    uint8_t body[48] = {CALL_CONTROL, TI_FLAG | INCOMING_TI, 0, 0};
+    int len = incoming_setup(n, body + 4);
+    body[3] = (uint8_t)len;
+    post(n, MMCM_EST_IND, body, 4 + len, port);
 }
 
 static void call_control(network_t *n, uint32_t transaction, const uint8_t *l3) {
     int kind = l3[1] & 0x3F;
     if (n->nfrom < (int)sizeof n->from_phone) n->from_phone[n->nfrom++] = kind;
-    if (kind == SETUP) {
+    n->call_ti = transaction;
+    n->call_first = l3[0];
+    if (kind == SETUP) n->in_call = 1;
+    if (kind == CONNECT) {                              /* an incoming call, answered */
+        after(n, 0.2, EV_TO_PHONE, 1, transaction, l3[0], CONNECT_ACK);
+    } else if (kind == SETUP) {
         after(n, 0.3, EV_TO_PHONE, 1, transaction, l3[0], CALL_PROCEEDING);
         after(n, 1.0, EV_TO_PHONE, 1, transaction, l3[0], ALERTING);
         after(n, 1.0 + ANSWER_AFTER, EV_TO_PHONE, 1, transaction, l3[0], CONNECT);
@@ -280,6 +337,8 @@ static void call_control(network_t *n, uint32_t transaction, const uint8_t *l3) 
         after(n, 0.2, EV_TO_PHONE, 1, transaction, l3[0], RELEASE);
     } else if (kind == RELEASE) {
         after(n, 0.2, EV_TO_PHONE, 1, transaction, l3[0], RELEASE_COMPLETE);
+    } else if (kind == RELEASE_COMPLETE) {
+        n->in_call = 0;
     }
 }
 
@@ -302,6 +361,7 @@ static void sent(machine_t *m, void *ctx) {
         }
     } else if (ident == MMCM_REL_REQ) {
         drop_call_events(n);
+        n->in_call = 0;
     }
 }
 
@@ -331,6 +391,10 @@ static void network_update(void *ctx) {
     for (int i = 0; i < nd; i++) {
         if (due[i].kind == EV_REGISTER) register_phone(n);
         else if (due[i].kind == EV_CONNECT) connect(n, due[i].a, due[i].b);
+        else if (due[i].kind == EV_INCOMING) {
+            uint32_t args[2] = {CALL_CONTROL, INCOMING_TI};
+            machine_call(n->m, MMCM_PORT, args, 2, incoming_port, n);
+        }
         else to_phone(n, due[i].a, due[i].b, due[i].c);
     }
 }
@@ -354,6 +418,33 @@ network_t *network_new(machine_t *m, uint64_t ips) {
 }
 
 int network_registered(network_t *n) { return n->registered; }
+
+/* Someone calls the phone (number: digits, may be empty). 0 if the phone is not on the
+   network or already in a call. */
+int network_incoming_call(network_t *n, const char *number) {
+    if (!n->registered || n->in_call) return 0;
+    snprintf(n->caller, sizeof n->caller, "%s", number ? number : "");
+    n->in_call = 1;
+    n->call_ti = TI_FLAG | INCOMING_TI;
+    n->call_first = CALL_CONTROL | 0x80 | INCOMING_TI << 4;        /* as the phone will reply */
+    after(n, 0.1, EV_INCOMING, 1, 0, 0, 0);
+    return 1;
+}
+
+/* The far end hangs up (or stops calling): 0 if there is no call. */
+int network_hang_up(network_t *n) {
+    if (!n->in_call) return 0;
+    for (int i = 0; i < n->nevents; i++)
+        if (n->events[i].kind == EV_INCOMING) {         /* not delivered yet: just forget it */
+            drop_call_events(n);
+            n->in_call = 0;
+            return 1;
+        }
+    if (!n->have_call_port) return 0;
+    drop_call_events(n);
+    after(n, 0.1, EV_TO_PHONE, 1, n->call_ti, n->call_first, DISCONNECT);
+    return 1;
+}
 
 int network_from_phone(network_t *n, uint8_t *kinds, int max) {
     int k = n->nfrom < max ? n->nfrom : max;

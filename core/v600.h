@@ -46,6 +46,12 @@ void     v600_set_time(v600_t *, int64_t now);
 void     v600_key(v600_t *, int key, int down);
 void     v600_flip(v600_t *, int open);
 
+/* The pretend network. Someone calls the phone (number: digits, shown as the caller;
+   may be empty); the far end hangs up. Both return 0 when not possible (not registered
+   yet, already in a call / no call). */
+int      v600_incoming_call(v600_t *, const char *number);
+int      v600_hang_up(v600_t *);
+
 /* The displays as RGBA (4 bytes per pixel, row by row); serial changes when the picture
    may have changed. The outer display is lit pixels in `on`, the rest in `off`. */
 uint32_t v600_lcd(v600_t *, uint8_t *rgba);

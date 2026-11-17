@@ -13,7 +13,7 @@ import numpy as np
 from drive import ROOT, boot, run_until, steps
 from v600 import board
 from v600.board import CPU_IPS
-from v600.network import CONNECT_ACK, DISCONNECT, SETUP
+from v600.network import ALERTING, CONNECT, CONNECT_ACK, DISCONNECT, RELEASE, SETUP
 
 OUT = ROOT / 'out' / 'selftest'
 
@@ -63,10 +63,24 @@ def main():
     check('call hangs up', DISCONNECT in m.network.from_phone)
     shot('5-call-ended')
 
+    before = len(m.network.from_phone)
+    check('someone calls the phone', m.network.incoming_call('07700900123'))
+    run('+3.0')
+    shot('6-incoming-call')
+    seen = m.network.from_phone[before:]
+    check('it rings (alerting, not answered by itself)', ALERTING in seen and CONNECT not in seen,
+          f'messages {seen}')
+    run('green', '+2.0')
+    check('green answers it', CONNECT in m.network.from_phone[before:])
+    check('they hang up', m.network.hang_up())
+    run('+3.0')
+    check('the phone releases the call', RELEASE in m.network.from_phone[before:])
+    shot('7-they-hung-up')
+
     updates = m.ati.outer.updates
     board.set_flip(m, False)
     run('+3.0')
-    m.ati.outer.image().resize((288, 96)).save(OUT / '6-outer.png')
+    m.ati.outer.image().resize((288, 96)).save(OUT / '8-outer.png')
     check('outer display shows the clock when closed',
           m.ati.outer.updates > updates and m.ati.outer.pixels.sum() > 50)
     board.set_flip(m, True)

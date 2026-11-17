@@ -103,7 +103,7 @@ instead (handy while changing the core: no app rebuild).
 
 ## Next
 
-- Incoming calls and text messages from the pretend network; the call voice path.
+- Text messages from the pretend network; the call voice path.
 - A camera picture.
 
 This is an independent hobby project, not affiliated with or endorsed by Motorola.

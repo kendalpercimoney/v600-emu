@@ -39,6 +39,10 @@ void     v600_destroy(v600_t *);
 int      v600_run(v600_t *, uint32_t microseconds);
 double   v600_seconds(v600_t *);                       /* phone time since power-up */
 
+/* Start the phone's clock: `now` = local time as seconds since 1970-01-01 (no time zone; the
+   phone keeps local time). Until called, the clock reads 0 (keeps test runs repeatable). */
+void     v600_set_time(v600_t *, int64_t now);
+
 void     v600_key(v600_t *, int key, int down);
 void     v600_flip(v600_t *, int open);
 

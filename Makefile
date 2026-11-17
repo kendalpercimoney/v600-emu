@@ -29,7 +29,7 @@ space        := $() $()
 EMSDK        ?= $(HOME)/code/emsdk
 EMSDK_PYTHON ?= $(firstword $(wildcard /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12) python3)
 EMCC         := EM_CONFIG=$(EMSDK)/.emscripten EMSDK_PYTHON=$(EMSDK_PYTHON) $(EMSDK)/upstream/emscripten/emcc
-API          := v600_create v600_destroy v600_run v600_seconds v600_key v600_flip v600_lcd \
+API          := v600_create v600_destroy v600_run v600_seconds v600_set_time v600_key v600_flip v600_lcd \
                 v600_lcd_serial v600_outer v600_outer_serial v600_audio v600_media \
                 v600_state_ready v600_state_changes v600_save_state v600_set_log malloc free
 EMFLAGS      := -O3 -flto -std=c99 -Wall -Wno-unused-parameter \

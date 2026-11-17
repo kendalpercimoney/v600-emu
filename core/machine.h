@@ -248,6 +248,7 @@ void        pmic_set_reg(pmic_t *, int reg, uint32_t v);
 void        pmic_connect(pmic_t *, edgeport_t *int_pin);
 int         pmic_int_level(pmic_t *);
 void        pmic_power_key(pmic_t *, int down);
+void        pmic_start_clock(pmic_t *, machine_t *, uint32_t ips, int64_t now);   /* local time, s since 1970 */
 qspi_t     *qspi_new(machine_t *, pmic_t *, ati_t *);
 dsp_t      *dsp_new(machine_t *);
 void        dsp_set_audio(dsp_t *, audio_t *);

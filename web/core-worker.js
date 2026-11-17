@@ -10,9 +10,17 @@
 self.V600Runner = function (post, coreUrl) {
   const LCD = 176 * 220 * 4, OUTER = 96 * 32 * 4, AUDIO = 16000;
   const OUTER_ON = 0x5096FF, OUTER_OFF = 0x000000;   // blue pixels behind black glass
-  const STEP_MS = 10, SAVE_MS = 5000;
+  const STEP_MS = 10, SAVE_MS = 5000, CLOCK_MS = 60000;
   let M, p, buf, stopped = null;
-  let t0 = 0, phone0 = 0, lcdSerial = -1, outerSerial = -1, changes = -1n, lastSave = 0;
+  let t0 = 0, phone0 = 0, lcdSerial = -1, outerSerial = -1, changes = -1n, lastSave = 0, lastClock = 0;
+
+  // The phone keeps local time: seconds since 1970 as read on a wall clock here. Set again
+  // every minute, as phone time stops while the page is hidden (a time set on the phone stays).
+  function setClock() {
+    const d = new Date();
+    M._v600_set_time(p, BigInt(Math.floor(d.getTime() / 1000) - d.getTimezoneOffset() * 60));
+    lastClock = performance.now();
+  }
 
   async function start(msg) {
     if (!self.V600Core) importScripts(coreUrl);
@@ -31,6 +39,7 @@ self.V600Runner = function (post, coreUrl) {
     if (!p) return post({ t: 'error', text: 'this firmware file is not usable' });
     buf = M._malloc(LCD + OUTER + 2 * AUDIO + 64);
     if (msg.open === false) M._v600_flip(p, 0);
+    setClock();
     changes = M._v600_state_changes(p);
     t0 = performance.now();
     phone0 = M._v600_seconds(p);
@@ -51,6 +60,7 @@ self.V600Runner = function (post, coreUrl) {
       }
       publish();
       if (now - lastSave > SAVE_MS) save();
+      if (now - lastClock > CLOCK_MS) setClock();
     }
     setTimeout(step, STEP_MS);
   }

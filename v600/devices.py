@@ -24,6 +24,7 @@ def _lib():
                 ('v600_machine_new', p, [ctypes.c_char_p, i64]), ('v600_reset', None, [p]),
                 ('v600_build', None, [p, i, i]), ('board_press', None, [p, i, i]),
                 ('board_flip', None, [p, i]), ('v600_part', p, [p, i]),
+                ('pmic_start_clock', None, [p, p, u32, i64]),
                 ('machine_set_log', None, [p, LOG]), ('machine_set_host_hook', None, [p, HOST_HOOK]),
                 ('machine_set_host_timer', None, [p, HOST_TIMER]),
                 ('machine_set_host', None, [p, HOST_DEVICE]),

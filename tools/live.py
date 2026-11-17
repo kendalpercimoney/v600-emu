@@ -90,6 +90,7 @@ class Phone:
         self.releases = []                  # (instruction count, key): key-ups held back
         fwlog.install(m, sink=self.messages.append)
         m.timers.append(WallClock(self))
+        board.set_clock(m)                  # the computer's time
         self.flip_open = True
         self.stopped = None
         self.saved_writes = 0

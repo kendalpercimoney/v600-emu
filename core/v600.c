@@ -110,6 +110,7 @@ void v600_key(v600_t *p, int key, int down) {
     }
 }
 void v600_flip(v600_t *p, int open) { board_flip(p->m, open); }
+void v600_set_time(v600_t *p, int64_t now) { pmic_start_clock(p->m->pmic, p->m, CPU_IPS, now); }
 
 /* -- displays ------------------------------------------------------------------------------ */
 uint32_t v600_lcd_serial(v600_t *p) {

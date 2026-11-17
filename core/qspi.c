@@ -27,7 +27,7 @@
    PSTAT holds the line levels, active low: bit 7 = power key, bit 8 = ONOFF2. Released =
    both set; the debouncer (0x1088EA3A) reads bit 7 clear and bit 8 set as "power key held",
    which turns the phone off after ~2 s. The PCAP's interrupt pin is edge port INT1. */
-enum { ISR = 0, MSR = 1, PSTAT = 2, ADC = 9, ADR = 10 };
+enum { ISR = 0, MSR = 1, PSTAT = 2, ADC = 9, ADR = 10, TOD = 14, TODA = 15, DAY = 16, DAYA = 17 };
 #define ONOFF (1u << 7)
 #define PSTAT_IDLE ((1u << 7) | (1u << 8))
 #define ASC (1u << 22)
@@ -38,9 +38,23 @@ enum { ISR = 0, MSR = 1, PSTAT = 2, ADC = 9, ADR = 10 };
 static const uint32_t ADC_BANK0[7] = {0x300, 0x2C0, 0x2C0, 0x000, 0x200, 0x3FF, 0x200};
 static const uint32_t ADC_BANK1[7] = {0x200, 0x200, 0x200, 0x200, 0x200, 0x200, 0x200};
 
+/* Real-time clock (Linux rtc-pcap.c): TOD = seconds of the day (17 bits), DAY = days since
+   1970-01-01 (15 bits); TODA / DAYA the alarm. ISR bit 2 every second, bit 5 at the alarm.
+   It runs only once the front end sets the time (pmic_start_clock, again to re-sync; a time
+   set on the phone is kept as an offset): until then it reads 0, which keeps headless runs
+   (the golden traces) the same from run to run. */
+#define TOD_MASK 0x1FFFFu
+#define DAY_MASK 0x7FFFu
+#define IRQ_1HZ (1u << 2)
+#define IRQ_TODA (1u << 5)
+
 struct pmic {
     uint32_t regs[32], sense, adc[7];
     edgeport_t *int_pin;
+    machine_t *m;                       /* the clock: time = base + instructions / ips */
+    double base, ips;
+    double offset;                      /* time the user set on the phone, vs the front end's */
+    int64_t last_second;
 };
 
 static int int_level(pmic_t *p) { return (p->regs[ISR] & ~p->regs[MSR] & 0x1FFFFFF) != 0; }
@@ -56,6 +70,49 @@ void pmic_power_key(pmic_t *p, int down) {
     }
 }
 
+static int64_t clock_now(pmic_t *p) { return (int64_t)(p->base + (double)p->m->insns / p->ips); }
+
+/* Write the clock registers' time fields from the running clock. */
+static void clock_regs(pmic_t *p) {
+    int64_t t = clock_now(p);
+    p->regs[TOD] = (p->regs[TOD] & ~TOD_MASK) | (uint32_t)(t % 86400);
+    p->regs[DAY] = (p->regs[DAY] & ~DAY_MASK) | ((uint32_t)(t / 86400) & DAY_MASK);
+}
+
+/* The firmware set the time: carry on from there. */
+static void clock_set(pmic_t *p, int64_t t) {
+    double d = (double)(t - clock_now(p));
+    p->base += d;
+    p->offset += d;
+}
+
+/* Machine timer: the second ticks (and the alarm). */
+static void clock_update(void *ctx) {
+    pmic_t *p = ctx;
+    int64_t t = clock_now(p);
+    if (t == p->last_second) return;
+    p->last_second = t;
+    p->regs[ISR] |= IRQ_1HZ;
+    if (t % 86400 == (p->regs[TODA] & TOD_MASK) && (t / 86400 & DAY_MASK) == (p->regs[DAYA] & DAY_MASK))
+        p->regs[ISR] |= IRQ_TODA;
+    raise_int(p);
+}
+
+static double clock_next(void *ctx) {
+    pmic_t *p = ctx;
+    double next_insn = ((double)(clock_now(p) + 1) - p->base) * p->ips;
+    return (next_insn + 1) * p->m->ticks_per_insn;
+}
+
+void pmic_start_clock(pmic_t *p, machine_t *m, uint32_t ips, int64_t now) {
+    int first = !p->m;
+    p->m = m;
+    p->ips = ips;
+    p->base = (double)now + p->offset - (double)m->insns / ips;
+    p->last_second = clock_now(p);
+    if (first) machine_add_timer(m, clock_update, clock_next, p);
+}
+
 static uint32_t adr(pmic_t *p) {
     uint32_t ctl = p->regs[ADC], a1 = (ctl >> 4) & 7, a2 = (ctl >> 7) & 7;
     uint32_t v1 = a1 < 7 ? p->adc[a1] : 0, v2 = a2 < 7 ? p->adc[a2] : 0;
@@ -64,10 +121,17 @@ static uint32_t adr(pmic_t *p) {
 
 static uint32_t pmic_word(pmic_t *p, uint32_t word) {
     uint32_t reg = (word >> 26) & 0x1F, data = word & 0x1FFFFFF;
-    if (!(word & 0x80000000u))
+    if (!(word & 0x80000000u)) {
+        if (p->m && (reg == TOD || reg == DAY)) clock_regs(p);
         return p->regs[reg] | (reg == PSTAT ? p->sense : 0);
+    }
     if (reg == ISR) p->regs[reg] &= ~data;
     else p->regs[reg] = data;
+    if (p->m && (reg == TOD || reg == DAY)) {
+        int64_t t = clock_now(p);
+        if (reg == TOD) clock_set(p, t - t % 86400 + (data & TOD_MASK));
+        else clock_set(p, (int64_t)(data & DAY_MASK) * 86400 + t % 86400);
+    }
     if (reg == ADR && (data & ASC)) {                    /* start conversion: instant */
         memcpy(p->adc, p->regs[ADC] & 0x4 ? ADC_BANK1 : ADC_BANK0, sizeof p->adc);
         p->regs[ISR] |= ADCDONE;

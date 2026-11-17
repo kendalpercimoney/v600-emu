@@ -1,7 +1,10 @@
 """The phone's board: the chip models wired up as on the V600 (core/board.c), and the
 handles the tools use. CPU_IPS: the CPU is taken to run 52 M instructions / s."""
+import calendar
+import time
+
 from .devices import (ATIChip, AudioDSP, Counter, Keypad, PART_ATI, PART_AUDIO, PART_FLASH,
-                      PART_NETWORK, _lib)
+                      PART_NETWORK, PART_PMIC, _lib)
 from .flash import Flash
 from .network import Network
 
@@ -27,3 +30,12 @@ def set_flip(m, open_):
 def press(m, name, down=True):
     """A key by name (devices.Keypad.CODES, or 'red': the power key on the PCAP)."""
     _lib().board_press(m.c, -1 if name == 'red' else Keypad.INDEX[name], 1 if down else 0)
+
+
+def set_clock(m, now=None):
+    """Start (or re-sync) the phone's clock at local time `now` (seconds since 1970, no time
+    zone), default the computer's. Unset, the clock reads 0 (repeatable test runs)."""
+    lib = _lib()
+    if now is None:
+        now = calendar.timegm(time.localtime())
+    lib.pmic_start_clock(lib.v600_part(m.c, PART_PMIC), m.c, CPU_IPS, int(now))

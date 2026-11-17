@@ -142,6 +142,7 @@ lcd.imageSmoothingEnabled = false;
 
 // ---- sound: 16 kHz PCM queued back to back, MP3 clips decoded here (as tools/live.html) ----
 const RATE = 16000;
+let heard = 0;                                   // seconds of non-silent sound scheduled
 let actx = null, playAt = 0, mapSample = 0, mapTime = 0;
 const clips = new Map();
 const timeOf = s => mapTime + (s - mapSample) / RATE;
@@ -211,6 +212,7 @@ const on = {
     playAt = Math.max(playAt, actx.currentTime + 0.1);
     mapSample = start; mapTime = playAt;
     if (pcm.some(v => v !== 0)) {
+      heard += pcm.length / RATE;
       const buf = actx.createBuffer(1, pcm.length, RATE), ch = buf.getChannelData(0);
       for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
       const src = actx.createBufferSource();
@@ -326,7 +328,8 @@ setInterval(() => {
   if (!s) return;
   if (lastPace) {
     const rate = (s.seconds - lastPace[1]) / (now - lastPace[0]);
-    console.log(`V600: phone time ${s.seconds.toFixed(1)} s, ${rate.toFixed(2)}x real time`);
+    console.log(`V600: phone time ${s.seconds.toFixed(1)} s, ${rate.toFixed(2)}x real time; ` +
+                `sound ${actx ? actx.state : 'not started'}, ${heard.toFixed(1)} s played`);
   }
   lastPace = [now, s.seconds];
 }, 10000);

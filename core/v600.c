@@ -8,8 +8,13 @@
 #define FLASH_SIZE 0x2000000u
 #define BLOCK 0x20000u
 #define CPU_IPS 52000000u
-#define MIN_HOLD (CPU_IPS / 10)        /* a key stays down at least 0.1 s (a tap's down and up
-                                          can arrive together, faster than the keypad scan) */
+/* Key timing. A touch screen sends a tap's down and up together, and taps faster than the
+   phone's keypad scan: each key stays down at least MIN_HOLD, and a key tapped while another
+   tap is still being held waits until that one is up plus KEY_GAP (two keys down at once
+   read as neither). Keys go to the board through a small queue of timed events. */
+#define MIN_HOLD (CPU_IPS / 10)
+#define KEY_GAP (CPU_IPS / 25)
+#define MAX_KEY_EVENTS 64
 #define NKEYS 26                       /* V600_KEY_RED (-1) .. V600_KEY_OK, stored at key + 1 */
 
 struct v600 {
@@ -21,30 +26,35 @@ struct v600 {
     uint32_t last_base, lcd_serial;
     int media_next;
     uint8_t *media_data;
-    uint64_t down_at[NKEYS], release_at[NKEYS];   /* release_at: a held-back key-up, or 0 */
+    uint64_t down_at[NKEYS];        /* when each key went (or goes) down */
+    uint64_t busy_until;            /* a tapped key is held until then (+ the gap) */
+    struct { uint64_t due; int key, down; } keys[MAX_KEY_EVENTS];
+    int nkeys;
 };
 
-/* The earliest held-back key-up, or UINT64_MAX. */
-static uint64_t next_release(v600_t *p) {
-    uint64_t t = UINT64_MAX;
-    for (int k = 0; k < NKEYS; k++)
-        if (p->release_at[k] && p->release_at[k] < t) t = p->release_at[k];
-    return t;
+/* The earliest queued key event, or UINT64_MAX. */
+static uint64_t next_key(v600_t *p) { return p->nkeys ? p->keys[0].due : UINT64_MAX; }
+
+static void keys_due(v600_t *p) {
+    int i = 0;
+    for (; i < p->nkeys && p->keys[i].due <= p->m->insns; i++) board_press(p->m, p->keys[i].key, p->keys[i].down);
+    memmove(p->keys, p->keys + i, (p->nkeys - i) * sizeof p->keys[0]);
+    p->nkeys -= i;
 }
 
-static void release_due(v600_t *p) {
-    for (int k = 0; k < NKEYS; k++)
-        if (p->release_at[k] && p->release_at[k] <= p->m->insns) {
-            p->release_at[k] = 0;
-            board_press(p->m, k - 1, 0);
-        }
+static void queue_key(v600_t *p, uint64_t due, int key, int down) {
+    if (p->nkeys == MAX_KEY_EVENTS) return;
+    int i = p->nkeys;
+    while (i > 0 && p->keys[i - 1].due > due) { p->keys[i] = p->keys[i - 1]; i--; }   /* keep order */
+    p->keys[i].due = due; p->keys[i].key = key; p->keys[i].down = down;
+    p->nkeys++;
 }
 
 static void no_update(void *ctx) { (void)ctx; }
 
 static double deadline_next(void *ctx) {
     v600_t *p = ctx;
-    uint64_t r = next_release(p), t = r < p->deadline ? r : p->deadline;
+    uint64_t r = next_key(p), t = r < p->deadline ? r : p->deadline;
     if (t < p->m->insns + 1) t = p->m->insns + 1;
     return (double)t * p->m->ticks_per_insn;
 }
@@ -84,7 +94,7 @@ int v600_run(v600_t *p, uint32_t microseconds) {
     if (m->powered_off) return 0;
     p->deadline = m->insns + (uint64_t)microseconds * (CPU_IPS / 1000000);
     while (m->insns < p->deadline) {
-        release_due(p);                  /* (the timer below stops idle skips at key-ups) */
+        keys_due(p);                     /* (the deadline timer stops idle skips at them) */
         /* One slice at a time: an idle fast-forward inside a longer run would jump the clock
            to the deadline and the run would then carry on past it. */
         if (machine_run(m, 20000, 20000, 0xFFFFFFFF, 0xFFFFFFFF) == RUN_ERROR) {
@@ -101,15 +111,16 @@ double v600_seconds(v600_t *p) { return (double)p->m->insns / CPU_IPS; }
 void v600_key(v600_t *p, int key, int down) {
     int k = key + 1;
     if (k < 0 || k >= NKEYS) return;
+    uint64_t now = p->m->insns;
     if (down) {
-        p->down_at[k] = p->m->insns;
-        p->release_at[k] = 0;
-        board_press(p->m, key, 1);
-    } else if (p->down_at[k] + MIN_HOLD > p->m->insns) {
-        p->release_at[k] = p->down_at[k] + MIN_HOLD;
+        p->down_at[k] = now > p->busy_until ? now : p->busy_until;
+        queue_key(p, p->down_at[k], key, 1);
     } else {
-        board_press(p->m, key, 0);
+        uint64_t up = p->down_at[k] + MIN_HOLD > now ? p->down_at[k] + MIN_HOLD : now;
+        queue_key(p, up, key, 0);
+        if (up + KEY_GAP > p->busy_until) p->busy_until = up + KEY_GAP;
     }
+    keys_due(p);
 }
 void v600_flip(v600_t *p, int open) { board_flip(p->m, open); }
 int v600_incoming_call(v600_t *p, const char *number) { return network_incoming_call(p->m->network, number); }

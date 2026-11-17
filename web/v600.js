@@ -255,7 +255,7 @@ const OS = {
     if (KEYS[code]) { core.key(KEYS[code], true); hw('haptic', 'tick'); }
   },
   keyUp(code) { if (KEYS[code]) core.key(KEYS[code], false); },
-  setOpen(open) { core.flip(!!open); setState({ open: !!open }); },
+  setOpen(open) { console.log(`V600: flip ${open ? 'open' : 'closed'}`); core.flip(!!open); setState({ open: !!open }); },
   powerOn() { core.key('red', true); setTimeout(() => core.key('red', false), 2500); },
   powerOff() { core.key('red', true); setTimeout(() => core.key('red', false), 2500); },
   onState(cb) { listeners.push(cb); },
@@ -299,6 +299,10 @@ setInterval(() => {
   lastPace = [now, s.seconds];
 }, 10000);
 addEventListener('pointerdown', () => Snd.ac(), { once: true });
+
+// In the app: its host says hello before this file has run, and answers with the hinge
+// state (OS.setOpen), which would then be lost: say hello again now that OS exists.
+try { window.webkit.messageHandlers.retro.postMessage({ t: 'hello' }); } catch (e) { /* not the app */ }
 
 // desktop test keys (as in the replica's index.html)
 const DESK = { ArrowUp: 'UP', ArrowDown: 'DOWN', ArrowLeft: 'LEFT', ArrowRight: 'RIGHT', Enter: 'OK',

@@ -59,6 +59,7 @@ class WallClock:
         return max(now, p.m.insns + 1) * p.m.counter.k
 
 
+MIN_HOLD = 0.1                              # seconds a key stays down at least
 STATE = Path(__file__).resolve().parent.parent / 'state' / 'flash.bin'
 
 
@@ -85,6 +86,8 @@ class Phone:
             n = m.flash.load(self.state)
             print(f'restored {n} flash blocks from {self.state}', flush=True)
         self.messages.clear()
+        self.pressed = {}                   # key -> instruction count when it went down
+        self.releases = []                  # (instruction count, key): key-ups held back
         fwlog.install(m, sink=self.messages.append)
         m.timers.append(WallClock(self))
         self.flip_open = True
@@ -115,6 +118,9 @@ class Phone:
             while not self.commands.empty():
                 self.handle(*self.commands.get())
             m = self.m
+            for due, key in [r for r in self.releases if r[0] <= m.insns]:
+                self.releases.remove((due, key))
+                board.press(m, key, False)
             ahead = (m.insns - self.virt0) / CPU_IPS - (time.monotonic() - self.wall0)
             if ahead > 0 or self.stopped:
                 time.sleep(min(max(ahead, 0), 0.02) or 0.02)
@@ -131,7 +137,18 @@ class Phone:
 
     def handle(self, what, *args):
         if what == 'key':
-            board.press(self.m, *args)
+            # A tap's down and up can arrive together, faster than the firmware scans the
+            # keypad: keep each key down for at least MIN_HOLD of phone time.
+            key, down = args
+            if down:
+                self.pressed[key] = self.m.insns
+                board.press(self.m, key, True)
+            else:
+                due = self.pressed.pop(key, 0) + int(MIN_HOLD * CPU_IPS)
+                if due > self.m.insns:
+                    self.releases.append((due, key))
+                else:
+                    board.press(self.m, key, False)
         elif what == 'flip':
             self.flip_open = args[0]
             board.set_flip(self.m, self.flip_open)
@@ -219,6 +236,8 @@ def handler(phone):
                     self.send_error(404)
             elif u.path == '/key':
                 name = q.get('name', [''])[0]
+                if os.environ.get('V600_KEYLOG'):
+                    print('key', name, q.get('down', ['1'])[0], flush=True)
                 if name in Keypad.CODES or name == 'red':
                     phone.commands.put(('key', name, q.get('down', ['1'])[0] == '1'))
                 self.send(b'ok', 'text/plain')

@@ -5,11 +5,13 @@
 // The phone runs in a "core" that this file talks to through a small transport:
 //   http  the emulator running on a computer (tools/live.py), for development
 //   wasm  the emulator compiled to WebAssembly, in this page (PORTING.md phase 4)
-// Pick with ?core=http&server=http://host:8600 (default: http, the page's own server).
+// The server: ?server=http://host:8600, else window.V600_SERVER (config.js, written by
+// tools/ios.py for the app), else the page's own origin.
 'use strict';
 
 const params = new URLSearchParams(location.search);
-const SERVER = params.get('server') || (location.protocol.startsWith('http') ? location.origin : 'http://localhost:8600');
+const SERVER = params.get('server') || window.V600_SERVER ||                  // config.js
+  (location.protocol.startsWith('http') ? location.origin : 'http://localhost:8600');
 
 // The app's key codes -> the emulator's key names (devices.Keypad.CODES, 'red').
 const KEYS = {

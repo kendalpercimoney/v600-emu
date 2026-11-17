@@ -1,5 +1,5 @@
 #!/bin/sh
-# Motorola V600 emulator: ./phone [play | test | drive STEP... | check | help]
+# Motorola V600 emulator: ./phone [play | test | drive STEP... | check | ios | help]
 cd "$(dirname "$0")" || exit 1
 PY=.venv/bin/python
 if [ ! -x "$PY" ]; then
@@ -18,9 +18,11 @@ case "$cmd" in
     test)  exec "$PY" tools/selftest.py "$@" ;;
     drive) exec "$PY" tools/drive.py "$@" ;;
     check) exec "$PY" tools/golden.py check ;;
-    *)     echo "usage: ./phone [play | test | drive STEP... | check | help]"
+    ios)   exec "$PY" tools/ios.py "$@" ;;
+    *)     echo "usage: ./phone [play | test | drive STEP... | check | ios | help]"
            echo "  play   run the phone in your browser (its state is kept in state/flash.bin)"
            echo "  test   boot headless and check the main features, PASS/FAIL (about 30 s)"
            echo "  drive  a scripted headless session, e.g.  ./phone drive 45.0 menu +2.0 shot:menu"
-           echo "  check  compare the whole machine with the golden trace (tests/golden.jsonl)" ;;
+           echo "  check  compare the whole machine with the golden traces (tests/golden/)"
+           echo "  ios    build the iPhone app fork (path in local.cfg) for the Simulator" ;;
 esac

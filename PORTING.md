@@ -121,7 +121,15 @@ size_t  v600_save_flash(v600_t *, uint8_t *out);             /* changed blocks, 
   for the app's localStorage blob). First run asks for the superfile (file picker); the
   firmware is never bundled in a distributed build.
 
-### 6. The app fork and its pipeline
+### 6. The app fork and its pipeline — working with the http transport (2026-11-17)
+Result: the fork (its own bundle ID, name "V600 Emu", document type and local-network
+permission) is built by `./phone ios`: web/ is staged with a config.js (the emulator's
+address), embedded by the fork's package builders, and the app is built for the
+Simulator. In the Simulator the 3D V600 shows the real firmware: the idle screen when
+opened, the outer display's clock when closed, keys and flip going through. Until the
+WebAssembly core exists, the page talks to tools/live.py on the Mac (http transport).
+
+Plan as written:
 - Fork the app into its own folder (name "V600 Emu", bundle ID `com.kendal.v600emu`,
   separate signing, app group, URL schemes and storage) so it installs beside the original.
 - The only coupling: the fork's firmware folder is a build product. `./phone ios` runs

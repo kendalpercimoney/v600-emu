@@ -6,3 +6,4 @@ out.log
 docs/
 state/
 build/
+local.cfg

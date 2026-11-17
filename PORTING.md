@@ -96,7 +96,14 @@ uint32_t v600_state(v600_t *);                               /* power, call, rin
 size_t  v600_save_flash(v600_t *, uint8_t *out);             /* changed blocks, for storage */
 ```
 
-### 4. Builds (`Makefile`, one command each)
+### 4. Builds (`Makefile`, one command each) — done (2026-11-17)
+Result: `make wasm` (Emscripten 7, `-O3 -flto`, 134 KB of WebAssembly), `make web` (the page in
+build/web/, with the firmware gzipped: 13.7 MB), `make wasm-test` (Node). Speed in Node: 45 s
+of phone time boots in 5 s; the idle phone runs 29x faster than real time. The core needed
+one change (M_PI is not C99). Key taps shorter than the keypad scan now last 0.1 s in the
+core (`v600_key`), as touch screens send down and up together; `make api-test` checks it.
+
+Plan as written:
 - `make native`: `libv600core.dylib` for the Python tools (clang -O2).
 - `make wasm`: Emscripten → `dist/web/v600core.{js,wasm}`, `-O3 -flto`, no threads,
   memory growth on.
@@ -104,7 +111,16 @@ size_t  v600_save_flash(v600_t *, uint8_t *out);             /* changed blocks, 
 - `make test`: native build, then the selftest and a short lockstep check.
 - The Emscripten SDK is a ~1 GB download: ask before installing it.
 
-### 5. Web adapter (`web/`): the HANDOFF contract on top of the core
+### 5. Web adapter (`web/`): the HANDOFF contract on top of the core — running (2026-11-17)
+Result: `web/v600.js` picks the transport (WebAssembly unless a server is named),
+`core-worker.js` runs the core in a Worker in real time (inline in the page if Workers fail)
+and posts frames, PCM, MP3 clips and the phone's state; `firmware.js` keeps the firmware and
+state in IndexedDB (firmware from IndexedDB, else firmware.shx.gz beside the page, else a
+file picker). In the iPhone app (Simulator) the phone boots, opens, closes and keeps its
+settings with no computer involved. Not yet: AudioWorklet (PCM still goes through buffer
+sources), the HW hooks (vibrate, lights), camera, OS.st beyond `open`.
+
+Plan as written:
 - `index.html` with `#lcd` and `#ext`; `host.js` keeps the same `window.HW` merge rules.
 - `os.js` shim: `OS.key(code)` maps the app's codes (`L R M SEND END OK UP…`, `VOLUP VOLDN
   VOICE SMART`, digits) to `V600_KEY_*`; `OS.keyUp`, `OS.setOpen`, `OS.powerOn/Off`

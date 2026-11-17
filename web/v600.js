@@ -3,15 +3,14 @@
 // OS.frame, OS.st / stateVersion / onState, Snd.ac, window.HW hooks).
 //
 // The phone runs in a "core" that this file talks to through a small transport:
-//   http  the emulator running on a computer (tools/live.py), for development
-//   wasm  the emulator compiled to WebAssembly, in this page (PORTING.md phase 4)
-// The server: ?server=http://host:8600, else window.V600_SERVER (config.js, written by
-// tools/ios.py for the app), else the page's own origin.
+//   wasm  the emulator compiled to WebAssembly (core-worker.js), in this page: the default
+//   http  the emulator running on a computer (tools/live.py), when a server is named:
+//         ?server=http://host:8600, or window.V600_SERVER (config.js)
+// Both report through the same callbacks (`on` below).
 'use strict';
 
 const params = new URLSearchParams(location.search);
-const SERVER = params.get('server') || window.V600_SERVER ||                  // config.js
-  (location.protocol.startsWith('http') ? location.origin : 'http://localhost:8600');
+const SERVER = params.get('server') || window.V600_SERVER || null;
 
 // The app's key codes -> the emulator's key names (devices.Keypad.CODES, 'red').
 const KEYS = {
@@ -20,86 +19,173 @@ const KEYS = {
   SMART: 'smart', '*': '*', '#': '#',
 };
 for (let d = 0; d <= 9; d++) KEYS[String(d)] = String(d);
+// The key names in core/v600.h's order (V600_KEY_1 = 0 ...); 'red' is -1.
+const KEY_ORDER = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#', 'green', 'soft_right',
+  'soft_left', 'menu', 'vol_up', 'vol_down', 'smart', 'voice', 'right', 'left', 'up', 'down', 'ok'];
 
 // ---- transport: the emulator on a computer (tools/live.py) ------------------------------
-const httpCore = {
-  key(name, down) { return fetch(`${SERVER}/key?name=${encodeURIComponent(name)}&down=${down ? 1 : 0}`); },
-  flip(open) { return fetch(`${SERVER}/control?do=flip&open=${open ? 1 : 0}`); },
-  async lcd() {                                   // ImageBitmap of the main display, or null
-    const r = await fetch(`${SERVER}/frame.png`);
-    return createImageBitmap(await r.blob());
-  },
-  async outer() {                                 // 32 x 96 bits, rows, MSB first
-    return new Uint8Array(await (await fetch(`${SERVER}/outer.bits`)).arrayBuffer());
-  },
-  async status() { return (await fetch(`${SERVER}/status`)).json(); },
-  async audio() { return (await fetch(`${SERVER}/audio`)).arrayBuffer(); },
-  async media() { return (await fetch(`${SERVER}/media`)).json(); },
-};
-const core = httpCore;
+function httpCore(server, on) {
+  const get = path => fetch(`${server}${path}`);
+  let lastSeconds = null, lastOuter = '';
+  async function tick() {
+    const s = await (await get('/status')).json();
+    on.status(s);
+    if (s.seconds === lastSeconds) return;
+    lastSeconds = s.seconds;
+    on.lcd(await createImageBitmap(await (await get('/frame.png')).blob()));
+    const bits = new Uint8Array(await (await get('/outer.bits')).arrayBuffer());
+    const key = bits.join(',');
+    if (key === lastOuter) return;
+    lastOuter = key;
+    const rgba = new Uint8ClampedArray(96 * 32 * 4);
+    for (let i = 0; i < 96 * 32; i++) {
+      const lit = bits[i >> 3] >> (7 - (i & 7)) & 1;
+      rgba.set(lit ? [80, 150, 255, 255] : [0, 0, 0, 255], 4 * i);
+    }
+    on.outer(rgba);
+  }
+  async function sound() {
+    const body = await (await get('/audio')).arrayBuffer();
+    if (body.byteLength >= 4) on.audio(new DataView(body).getUint32(0, true), new Int16Array(body, 4));
+    for (const e of await (await get('/media')).json()) {
+      on.media(e.id, e.at, e.data ? Uint8Array.from(atob(e.data), c => c.charCodeAt(0)).buffer : null);
+    }
+  }
+  setInterval(() => tick().catch(() => {}), 100);        // unreachable: try again
+  setInterval(() => sound().catch(() => {}), 100);
+  return {
+    key(name, down) { get(`/key?name=${encodeURIComponent(name)}&down=${down ? 1 : 0}`); },
+    flip(open) { get(`/control?do=flip&open=${open ? 1 : 0}`); },
+  };
+}
+
+// ---- transport: the WebAssembly core, in a Worker (or inline, where Workers fail) -------
+function wasmCore(on) {
+  let send = null, ready = false;
+  const queue = [];                                     // input before the core is up
+  const post = m => (ready ? send(m) : queue.push(m));
+
+  function handle(m) {
+    if (m.t === 'ready') { ready = true; queue.splice(0).forEach(send); }
+    else if (m.t === 'lcd') on.lcd(new ImageData(new Uint8ClampedArray(m.rgba), 176, 220));
+    else if (m.t === 'outer') on.outer(new Uint8ClampedArray(m.rgba));
+    else if (m.t === 'audio') on.audio(m.start, new Int16Array(m.pcm));
+    else if (m.t === 'media') on.media(m.id, m.at, m.mp3);
+    else if (m.t === 'status') on.status(m);
+    else if (m.t === 'state') V600Store.saveState(m.bytes);
+    else if (m.t === 'error') on.error(m.text);
+  }
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src; s.onload = resolve; s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  async function inline(startMsg) {
+    await loadScript('v600core.js');
+    await loadScript('core-worker.js');
+    const h = self.V600Runner(handle, new URL('v600core.js', location.href).href);
+    h(startMsg);
+    return h;
+  }
+
+  (async () => {
+    const [firmware, state] = await Promise.all([V600Store.firmware(), V600Store.state()]);
+    const startMsg = { t: 'start', firmware, state: state || null, open: OS.st.open };
+    let worker = null;
+    try { worker = new Worker('core-worker.js'); } catch (e) { /* inline below */ }
+    if (worker) {
+      worker.onerror = async e => {                     // could not load: run in the page
+        if (ready) return on.error(String(e.message || e));
+        worker.terminate();
+        const h = await inline(startMsg);
+        send = m => h(m);
+      };
+      worker.onmessage = e => handle(e.data);
+      worker.postMessage(startMsg);
+      send = m => worker.postMessage(m);
+    } else {
+      const h = await inline(startMsg);
+      send = m => h(m);
+    }
+  })().catch(e => on.error(String(e)));
+
+  // Store the phone's data when the page goes away (the core also stores it every 5 s).
+  addEventListener('visibilitychange', () => { if (document.hidden) post({ t: 'save' }); });
+  addEventListener('pagehide', () => post({ t: 'save' }));
+
+  return {
+    key(name, down) { post({ t: 'key', key: name === 'red' ? -1 : KEY_ORDER.indexOf(name), down }); },
+    flip(open) { post({ t: 'flip', open }); },
+  };
+}
 
 // ---- the displays -------------------------------------------------------------------------
 const lcd = document.getElementById('lcd').getContext('2d');
 const ext = document.getElementById('ext').getContext('2d');
 lcd.imageSmoothingEnabled = false;
-const extImage = ext.createImageData(96, 32);
-let lastOuter = '';
-const EXT_ON = [80, 150, 255], EXT_OFF = [0, 0, 0];   // blue pixels behind black glass
-
-async function drawLcd() {
-  const img = await core.lcd();
-  lcd.drawImage(img, 0, 0, 176, 220);
-  OS.frame++;
-}
-
-async function drawOuter() {
-  const bits = await core.outer();
-  const key = bits.join(',');
-  if (key === lastOuter) return;
-  lastOuter = key;
-  for (let i = 0; i < 96 * 32; i++) {
-    const c = bits[i >> 3] >> (7 - (i & 7)) & 1 ? EXT_ON : EXT_OFF;
-    extImage.data.set([c[0], c[1], c[2], 255], 4 * i);
-  }
-  ext.putImageData(extImage, 0, 0);
-  OS.frame++;
-}
 
 // ---- sound: 16 kHz PCM queued back to back, MP3 clips decoded here (as tools/live.html) ----
 const RATE = 16000;
 let actx = null, playAt = 0, mapSample = 0, mapTime = 0;
 const clips = new Map();
 const timeOf = s => mapTime + (s - mapSample) / RATE;
-async function pumpAudio() {
-  if (!actx) return;
-  const body = await core.audio();
-  if (body.byteLength < 4) return;
-  const start = new DataView(body).getUint32(0, true), pcm = new Int16Array(body, 4);
-  if (playAt > actx.currentTime + 0.5) playAt = actx.currentTime + 0.1;
-  playAt = Math.max(playAt, actx.currentTime + 0.1);
-  mapSample = start; mapTime = playAt;
-  if (pcm.some(v => v !== 0)) {
-    const buf = actx.createBuffer(1, pcm.length, RATE), ch = buf.getChannelData(0);
-    for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
-    const src = actx.createBufferSource();
-    src.buffer = buf; src.connect(actx.destination); src.start(playAt);
+
+async function playClip(id, at, mp3) {
+  if (!mp3) {
+    if (clips.has(id)) { clips.get(id).stop(Math.max(timeOf(at), actx.currentTime)); clips.delete(id); }
+    return;
   }
-  playAt += pcm.length / RATE;
-  for (const e of await core.media()) {
-    if (e.data) {
-      const src = actx.createBufferSource();
-      try { src.buffer = await actx.decodeAudioData(Uint8Array.from(atob(e.data), c => c.charCodeAt(0)).buffer); }
-      catch (err) { continue; }
-      src.connect(actx.destination);
-      const late = actx.currentTime - timeOf(e.at);
-      src.start(late > 0 ? 0 : timeOf(e.at), Math.max(late, 0));
-      clips.set(e.id, src);
-    } else if (clips.has(e.id)) {
-      clips.get(e.id).stop(Math.max(timeOf(e.at), actx.currentTime));
-      clips.delete(e.id);
-    }
-  }
+  const src = actx.createBufferSource();
+  try { src.buffer = await actx.decodeAudioData(mp3); } catch (err) { return; }
+  src.connect(actx.destination);
+  const late = actx.currentTime - timeOf(at);
+  src.start(late > 0 ? 0 : timeOf(at), Math.max(late, 0));
+  clips.set(id, src);
 }
+
+// ---- what the core reports ----------------------------------------------------------------
+const on = {
+  lcd(img) {
+    if (img instanceof ImageData) lcd.putImageData(img, 0, 0);
+    else lcd.drawImage(img, 0, 0, 176, 220);
+    OS.frame++;
+  },
+  outer(rgba) {
+    ext.putImageData(new ImageData(rgba, 96, 32), 0, 0);
+    OS.frame++;
+  },
+  audio(start, pcm) {
+    if (!actx) return;
+    if (playAt > actx.currentTime + 0.5) playAt = actx.currentTime + 0.1;
+    playAt = Math.max(playAt, actx.currentTime + 0.1);
+    mapSample = start; mapTime = playAt;
+    if (pcm.some(v => v !== 0)) {
+      const buf = actx.createBuffer(1, pcm.length, RATE), ch = buf.getChannelData(0);
+      for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+      const src = actx.createBufferSource();
+      src.buffer = buf; src.connect(actx.destination); src.start(playAt);
+    }
+    playAt += pcm.length / RATE;
+  },
+  media(id, at, mp3) { if (actx) playClip(id, at, mp3); },
+  status(s) {
+    if (s.stopped) console.warn('emulator stopped:', s.stopped);
+    if (s.flip_open !== undefined) setState({ open: !!s.flip_open });
+  },
+  error(text) {
+    console.error('V600:', text);
+    if (/firmware/.test(text)) V600Store.forgetFirmware();
+    lcd.fillStyle = '#000'; lcd.fillRect(0, 0, 176, 220);
+    lcd.fillStyle = '#f66'; lcd.font = '11px sans-serif';
+    lcd.fillText('Emulator error:', 6, 20);
+    text.match(/.{1,30}/g).forEach((line, i) => lcd.fillText(line, 6, 36 + 14 * i));
+    OS.frame++;
+  },
+};
 
 // ---- the contract ----------------------------------------------------------------------
 const listeners = [];
@@ -145,22 +231,7 @@ const defaults = {
 window.HW = Object.assign({}, defaults, window.HW || {});
 function hw(name, ...args) { try { window.HW[name](...args); } catch (e) {} }
 
-// ---- loops -------------------------------------------------------------------------------
-let lastStatus = null;
-async function tick() {
-  try {
-    const s = await core.status();
-    if (s.stopped) console.warn('emulator stopped:', s.stopped);
-    setState({ open: !!s.flip_open });
-    if (!lastStatus || s.seconds !== lastStatus.seconds) {
-      await drawLcd();
-      await drawOuter();
-    }
-    lastStatus = s;
-  } catch (e) { /* the emulator is not reachable: try again */ }
-}
-setInterval(tick, 100);
-setInterval(() => pumpAudio().catch(() => {}), 100);
+const core = SERVER ? httpCore(SERVER, on) : wasmCore(on);
 addEventListener('pointerdown', () => Snd.ac(), { once: true });
 
 // desktop test keys (as in the replica's index.html)

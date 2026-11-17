@@ -1,10 +1,12 @@
 """Build the iPhone app fork with this emulator's front end (PORTING.md phase 6).
 
-    .venv/bin/python tools/ios.py [--server=http://localhost:8600]     (or ./phone ios)
+    .venv/bin/python tools/ios.py [--server=http://localhost:8654]     (or ./phone ios)
 
-Stages web/ in build/app-firmware/ with a config.js (the emulator's address, for the http
-transport), runs the fork's package builder on it (Tools/make_v600.py, which embeds the
-folder named by V600_FIRMWARE), then builds the app for the iOS Simulator. The fork's
+Stages the page in build/app-firmware/: `make web` (the WebAssembly core, web/ and, if
+firmware/v600.shx exists, the firmware gzipped: a private build), or with --server the
+http transport instead (web/ plus a config.js with the emulator's address, tools/live.py).
+Runs the fork's package builder on it (Tools/make_v600.py, which embeds the folder named
+by V600_FIRMWARE), then builds the app for the iOS Simulator. The fork's
 location is in local.cfg (git-ignored), a line APP=/path/to/the/fork, so this public repo
 never names it. Prints the built .app's path.
 """
@@ -27,12 +29,16 @@ def app_dir():
 
 
 def main(argv):
-    server = next((a[9:] for a in argv if a.startswith('--server=')), 'http://localhost:8600')
+    server = next((a[9:] for a in argv if a.startswith('--server=')), None)
     app = app_dir()
     if STAGE.exists():
         shutil.rmtree(STAGE)
-    shutil.copytree(ROOT / 'web', STAGE)
-    (STAGE / 'config.js').write_text(f'window.V600_SERVER = {server!r};\n')
+    if server:
+        shutil.copytree(ROOT / 'web', STAGE)
+        (STAGE / 'config.js').write_text(f'window.V600_SERVER = {server!r};\n')
+    else:
+        subprocess.run(['make', '-s', '-C', str(ROOT), 'web'], check=True)
+        shutil.copytree(ROOT / 'build' / 'web', STAGE)
     env = dict(os.environ, V600_FIRMWARE=str(STAGE))
     subprocess.run([sys.executable, str(app / 'Tools' / 'make_v600.py')], check=True, env=env)
     photo = app / 'Retrophonia' / 'Resources' / 'Devices' / 'v600-photo.retrodevice'

@@ -63,11 +63,37 @@ Changes the phone makes to its flash (settings, contacts, messages) are saved to
 idle screen, registering on the pretend network, the menu, the ringing tone, an outgoing call
 (set up, answered, hung up) and the outer display. Screenshots go to `out/selftest/`.
 
+### In a browser or the iPhone app, with no server (WebAssembly)
+
+The same core compiles to WebAssembly with the [Emscripten SDK](https://emscripten.org)
+(about 2 GB; it needs Python 3.10+, e.g. `brew install python@3.12`):
+
+```bash
+git clone https://github.com/emscripten-core/emsdk.git ~/code/emsdk
+cd ~/code/emsdk && EMSDK_PYTHON=python3.12 ./emsdk install latest && ./emsdk activate latest
+```
+
+(elsewhere: put `EMSDK=/path/to/emsdk` in `local.cfg`). Then:
+
+```bash
+make web         # build/web/: the page, the core (v600core.wasm) and the firmware, gzipped
+make wasm-test   # the WebAssembly core in Node: boot, a key tap, speed
+./phone ios      # the iPhone app fork (path in local.cfg: APP=...) with that page built in
+```
+
+Serve `build/web/` (e.g. `python3 -m http.server -d build/web`) and open it: the phone runs
+in the page and keeps its data in the browser (IndexedDB). Without `firmware/v600.shx` the
+page asks for the firmware file instead; `build/web/` holds your firmware, so never publish it.
+`./phone ios --server=http://localhost:8654` builds the app against a `tools/live.py`
+instead (handy while changing the core: no app rebuild).
+
 ## Layout
 
 - `core/`: the emulator, in portable C: the CPU (`cpu.c`, `mem.c`), the machine loop and
   hooks (`run.c`, `machine.c`), one file per chip (`ati.c`, `sim.c`, `audio.c`, ...),
   the firmware hooks (`firmware.c`) and the board (`board.c`). `make` builds it.
+- `web/`: the page for the browser and the app: `v600.js` (the app's firmware contract),
+  `core-worker.js` (the WebAssembly core in real time), `firmware.js` (firmware and state).
 - `v600/`: the Python handle on it that the tools use (`machine.py`, `board.py`).
 - `tools/`: live mode, the self-test, scripted runs, golden traces, disassembly helpers.
 - `tests/golden/`: the golden traces: digests of the whole machine through scripted

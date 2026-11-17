@@ -8,6 +8,9 @@
 #define FLASH_SIZE 0x2000000u
 #define BLOCK 0x20000u
 #define CPU_IPS 52000000u
+#define MIN_HOLD (CPU_IPS / 10)        /* a key stays down at least 0.1 s (a tap's down and up
+                                          can arrive together, faster than the keypad scan) */
+#define NKEYS 26                       /* V600_KEY_RED (-1) .. V600_KEY_OK, stored at key + 1 */
 
 struct v600 {
     machine_t *m;
@@ -18,13 +21,31 @@ struct v600 {
     uint32_t last_base, lcd_serial;
     int media_next;
     uint8_t *media_data;
+    uint64_t down_at[NKEYS], release_at[NKEYS];   /* release_at: a held-back key-up, or 0 */
 };
+
+/* The earliest held-back key-up, or UINT64_MAX. */
+static uint64_t next_release(v600_t *p) {
+    uint64_t t = UINT64_MAX;
+    for (int k = 0; k < NKEYS; k++)
+        if (p->release_at[k] && p->release_at[k] < t) t = p->release_at[k];
+    return t;
+}
+
+static void release_due(v600_t *p) {
+    for (int k = 0; k < NKEYS; k++)
+        if (p->release_at[k] && p->release_at[k] <= p->m->insns) {
+            p->release_at[k] = 0;
+            board_press(p->m, k - 1, 0);
+        }
+}
 
 static void no_update(void *ctx) { (void)ctx; }
 
 static double deadline_next(void *ctx) {
     v600_t *p = ctx;
-    uint64_t t = p->deadline > p->m->insns + 1 ? p->deadline : p->m->insns + 1;
+    uint64_t r = next_release(p), t = r < p->deadline ? r : p->deadline;
+    if (t < p->m->insns + 1) t = p->m->insns + 1;
     return (double)t * p->m->ticks_per_insn;
 }
 
@@ -62,7 +83,9 @@ int v600_run(v600_t *p, uint32_t microseconds) {
     machine_t *m = p->m;
     p->deadline = m->insns + (uint64_t)microseconds * (CPU_IPS / 1000000);
     while (m->insns < p->deadline) {
-        uint64_t left = p->deadline - m->insns, n = left < 2000000 ? left : 2000000;
+        release_due(p);
+        uint64_t r = next_release(p), stop = r < p->deadline ? r : p->deadline;
+        uint64_t left = stop > m->insns ? stop - m->insns : 1, n = left < 2000000 ? left : 2000000;
         if (machine_run(m, n > 20000 ? n : 20000, 20000, 0xFFFFFFFF, 0xFFFFFFFF) == RUN_ERROR) {
             p->failed = 1;
             return 1;
@@ -73,7 +96,19 @@ int v600_run(v600_t *p, uint32_t microseconds) {
 
 double v600_seconds(v600_t *p) { return (double)p->m->insns / CPU_IPS; }
 
-void v600_key(v600_t *p, int key, int down) { board_press(p->m, key, down); }
+void v600_key(v600_t *p, int key, int down) {
+    int k = key + 1;
+    if (k < 0 || k >= NKEYS) return;
+    if (down) {
+        p->down_at[k] = p->m->insns;
+        p->release_at[k] = 0;
+        board_press(p->m, key, 1);
+    } else if (p->down_at[k] + MIN_HOLD > p->m->insns) {
+        p->release_at[k] = p->down_at[k] + MIN_HOLD;
+    } else {
+        board_press(p->m, key, 0);
+    }
+}
 void v600_flip(v600_t *p, int open) { board_flip(p->m, open); }
 
 /* -- displays ------------------------------------------------------------------------------ */

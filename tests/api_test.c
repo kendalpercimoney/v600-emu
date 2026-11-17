@@ -3,6 +3,7 @@
        make api-test && build/api_test firmware/v600.shx */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "../core/v600.h"
 
 static int failures;
@@ -21,6 +22,13 @@ static void press(v600_t *p, int key) {
     v600_run(p, 200000);
     v600_key(p, key, 0);
     v600_run(p, 400000);
+}
+
+/* Down and up together, as a touch screen can send them: the core holds the key 0.1 s. */
+static void tap(v600_t *p, int key) {
+    v600_key(p, key, 1);
+    v600_key(p, key, 0);
+    v600_run(p, 600000);
 }
 
 int main(int argc, char **argv) {
@@ -45,9 +53,15 @@ int main(int argc, char **argv) {
     press(p, V600_KEY_SOFT_RIGHT);                 /* "Personalise your phone?" no, no */
     press(p, V600_KEY_SOFT_RIGHT);
     press(p, V600_KEY_RED);
-    press(p, V600_KEY_MENU);
     v600_run(p, 2000000);
-    CHECK("the menu redraws the screen", v600_lcd(p, lcd) != s0);
+    static uint8_t idle[sizeof lcd];
+    v600_lcd(p, idle);
+    tap(p, V600_KEY_MENU);
+    v600_run(p, 2000000);
+    v600_lcd(p, lcd);
+    int changed = 0;
+    for (size_t i = 0; i < sizeof lcd; i += 4) changed += memcmp(lcd + i, idle + i, 3) != 0;
+    CHECK("a quick tap opens the menu", changed > V600_LCD_W * V600_LCD_H / 4);
     ppm("out/api_lcd.ppm", lcd, V600_LCD_W, V600_LCD_H);
 
     press(p, V600_KEY_RED);

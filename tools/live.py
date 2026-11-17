@@ -227,6 +227,8 @@ def handler(phone):
                 self.send(phone.outer(), 'image/png')
             elif u.path == '/outer.bits':                # 32 x 96 pixels, 1 bit each, rows
                 self.send(np.packbits(phone.m.ati.outer.pixels != 0).tobytes(), 'application/octet-stream')
+            elif u.path == '/web/config.js':             # web/ served here talks to this server
+                self.send(b'window.V600_SERVER = location.origin;\n', 'text/javascript')
             elif u.path.startswith('/web/'):             # the app's front end (web/)
                 f = (WEB / u.path[5:]).resolve()
                 if WEB in f.parents and f.is_file():

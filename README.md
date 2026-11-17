@@ -79,6 +79,7 @@ cd ~/code/emsdk && EMSDK_PYTHON=python3.12 ./emsdk install latest && ./emsdk act
 make web         # build/web/: the page, the core (v600core.wasm) and the firmware, gzipped
 make wasm-test   # the WebAssembly core in Node: boot, a key tap, speed
 ./phone ios      # the iPhone app fork (path in local.cfg: APP=...) with that page built in
+./phone ios --device   # the same for a connected iPhone: build, install, start
 ```
 
 Serve `build/web/` (e.g. `python3 -m http.server -d build/web`) and open it: the phone runs

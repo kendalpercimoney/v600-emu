@@ -24,5 +24,6 @@ case "$cmd" in
            echo "  test   boot headless and check the main features, PASS/FAIL (about 30 s)"
            echo "  drive  a scripted headless session, e.g.  ./phone drive 45.0 menu +2.0 shot:menu"
            echo "  check  compare the whole machine with the golden traces (tests/golden/)"
-           echo "  ios    build the iPhone app fork (path in local.cfg) for the Simulator" ;;
+           echo "  ios    build the iPhone app fork (path in local.cfg) for the Simulator;"
+           echo "         --device: for a connected iPhone (build, install, start)" ;;
 esac

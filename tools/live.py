@@ -64,6 +64,10 @@ MIN_HOLD = 0.1                              # seconds a key stays down at least
 STATE = Path(__file__).resolve().parent.parent / 'state' / 'flash.bin'
 
 
+SAMPLE_TEXTS = ['Running late, be there in 10', 'Did you see the match last night?',
+                'Call me when you get this', 'Happy birthday! x', 'Pub at 8?']
+
+
 def made_up_number():
     """A UK mobile number from the range Ofcom keeps for drama (07700 900000-900999)."""
     return '07700900' + ''.join(random.choice('0123456789') for _ in range(3))
@@ -163,6 +167,8 @@ class Phone:
             self.m.network.incoming_call(args[0])
         elif what == 'hangup':
             self.m.network.hang_up()
+        elif what == 'sms':
+            self.m.network.incoming_sms(*args)
         elif what == 'restart':
             self.save()
             self.boot()
@@ -262,6 +268,9 @@ def handler(phone):
                     phone.commands.put((what,))
                 elif what == 'call':
                     phone.commands.put(('call', q.get('number', [''])[0] or made_up_number()))
+                elif what == 'sms':
+                    phone.commands.put(('sms', q.get('number', [''])[0] or made_up_number(),
+                                        q.get('text', [''])[0] or random.choice(SAMPLE_TEXTS)))
                 self.send(b'ok', 'text/plain')
             elif u.path == '/audio':
                 self.send(phone.sound(), 'application/octet-stream')

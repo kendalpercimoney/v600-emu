@@ -196,6 +196,8 @@ network_t *network_new(machine_t *, uint64_t ips);
 int        network_registered(network_t *);
 int         network_incoming_call(network_t *, const char *number);
 int         network_hang_up(network_t *);
+int         network_incoming_sms(network_t *, const char *from, const char *text);
+int         network_sms_delivered(network_t *);
 int        network_from_phone(network_t *, uint8_t *kinds, int max);
 /* board.c */
 machine_t *v600_machine_new(const uint8_t *superfile, int64_t n);
@@ -251,6 +253,7 @@ void        pmic_connect(pmic_t *, edgeport_t *int_pin);
 int         pmic_int_level(pmic_t *);
 void        pmic_power_key(pmic_t *, int down);
 void        pmic_start_clock(pmic_t *, machine_t *, uint32_t ips, int64_t now);   /* local time, s since 1970 */
+int64_t     pmic_time(pmic_t *);                       /* -1 until started */
 qspi_t     *qspi_new(machine_t *, pmic_t *, ati_t *);
 dsp_t      *dsp_new(machine_t *);
 void        dsp_set_audio(dsp_t *, audio_t *);

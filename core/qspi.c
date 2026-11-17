@@ -154,6 +154,9 @@ void pmic_set_reg(pmic_t *p, int reg, uint32_t v) { p->regs[reg & 31] = v; }
 void pmic_connect(pmic_t *p, edgeport_t *int_pin) { p->int_pin = int_pin; }
 int pmic_int_level(pmic_t *p) { return int_level(p); }
 
+/* The phone's clock (local time, s since 1970), or -1 while it is not running. */
+int64_t pmic_time(pmic_t *p) { return p->m ? clock_now(p) : -1; }
+
 /* ---- QSPI ---------------------------------------------------------------------------- */
 struct qspi {
     device_t d;

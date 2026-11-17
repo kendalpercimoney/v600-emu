@@ -3,7 +3,7 @@
 //
 // In:  {t:'start', firmware: ArrayBuffer, state: ArrayBuffer|null, open}
 //      {t:'key', key: index (core/v600.h, -1 = red), down} {t:'flip', open} {t:'save'}
-//      {t:'call', number} (someone calls) {t:'hangup'} (they hang up)
+//      {t:'call', number} (someone calls) {t:'hangup'} (they hang up) {t:'sms', from, text}
 // Out: {t:'ready'} {t:'error', text} {t:'lcd', rgba} {t:'outer', rgba} {t:'audio', start, pcm}
 //      {t:'media', id, at, mp3|null} {t:'status', seconds, stopped} {t:'state', bytes}
 'use strict';
@@ -122,6 +122,14 @@ self.V600Runner = function (post, coreUrl) {
         M._v600_incoming_call(p, at);
         M._free(at);
       } else if (msg.t === 'hangup') M._v600_hang_up(p);
+      else if (msg.t === 'sms') {
+        const a = new TextEncoder().encode(msg.from + '\0'), b = new TextEncoder().encode(msg.text + '\0');
+        const at = M._malloc(a.length + b.length);
+        M.HEAPU8.set(a, at);
+        M.HEAPU8.set(b, at + a.length);
+        M._v600_incoming_sms(p, at, at + a.length);
+        M._free(at);
+      }
     } catch (e) {
       post({ t: 'error', text: String(e) });
     }

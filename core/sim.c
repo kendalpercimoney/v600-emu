@@ -48,6 +48,7 @@ typedef struct {
 
 static const uint8_t ATR[] = {0x3B, 0x02, 0x14, 0x50};   /* direct, T=0, defaults, 2 hist. */
 static const char IMSI[] = "001010123456789";            /* MCC 001 / MNC 01: test network */
+static const char SMS_CENTRE[] = "447700900000";        /* text message centre (UK drama range) */
 
 static sim_file_t *add(card_t *c, int fid, int parent, int type) {
     sim_file_t *f = &c->files[c->nfiles++];
@@ -133,7 +134,11 @@ static void card_build(card_t *c) {
     memset(b, 0xFF, 176); b[0] = 0; ef_records(c, 0x6F3C, TEL, 176, 10, 0, b);   /* SMS */
     ef_records(c, 0x6F3D, TEL, 14, 2, 0, 0);                             /* CCP */
     ef_records(c, 0x6F40, TEL, 28, 2, 0, 0);                             /* MSISDN */
-    ef_records(c, 0x6F42, TEL, 40, 1, 0, 0);                             /* SMSP */
+    memset(b, 0xFF, 40);                         /* SMSP: the message centre (GSM 11.11 10.3.6) */
+    b[12] = 0xFD;                                /* parameter indicators: only the centre */
+    b[25] = (uint8_t)(1 + bcd_swapped(SMS_CENTRE, b + 27));
+    b[26] = 0x91;                                /* international */
+    ef_records(c, 0x6F42, TEL, 40, 1, 0, b);
     ef_ff(c, 0x6F43, TEL, 2);                                            /* SMSS */
     ef_records(c, 0x6F44, TEL, 28, 5, 1, 0);                             /* LND */
     ef_records(c, 0x6F4A, TEL, 13, 5, 0, 0);                             /* EXT1 */

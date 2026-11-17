@@ -49,7 +49,9 @@ def _lib():
                                       ctypes.POINTER(i64), p, i64]),
                 ('audio_events_clear', None, [p]),
                 ('network_registered', i, [p]), ('network_from_phone', i, [p, p, i]),
-                ('network_incoming_call', i, [p, ctypes.c_char_p]), ('network_hang_up', i, [p])]:
+                ('network_incoming_call', i, [p, ctypes.c_char_p]), ('network_hang_up', i, [p]),
+                ('network_incoming_sms', i, [p, ctypes.c_char_p, ctypes.c_char_p]),
+                ('network_sms_delivered', i, [p])]:
             f = getattr(lib, name)
             f.restype, f.argtypes = res, args
         lib._declared = True

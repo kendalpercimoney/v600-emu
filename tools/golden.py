@@ -21,6 +21,7 @@ Deliberate changes since the reference (2026-11-17):
 - The power IC's headset-detect line (PSTAT bit 12) reads "no headset"; before, the phone
   thought a headset was in (it answered incoming calls by itself). Fixed in the reference
   too (build/reference/v600/periph.py, PSTAT_IDLE), and the traces recorded from it.
+- The SIM has a text message centre (EF_SMSP), as in sim.c; same change in the reference.
 - call.jsonl digests 200-202 (dialling 555) carry sound, the keypad's DTMF tones, silent in
   the reference; every other field there is the reference's.
 """

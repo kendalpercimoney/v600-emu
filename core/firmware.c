@@ -189,6 +189,10 @@ void fwlog_install(machine_t *m) { machine_hook(m, VSPRINTF, vsprintf_hook, 0, 0
      holds it in bit 3 (8 | value), or call control releases the connection at once.
      The far end hangs up: DISCONNECT (cause 16, normal clearing) -> the phone's RELEASE ->
      RELEASE COMPLETE.
+   Text messages to the phone (GSM 04.11, protocol 9, same MMCM primitives): 0x15042 opens
+     a network-side transaction with CP-DATA [RP-DATA [SMS-DELIVER (GSM 03.40): sender,
+     time stamp, 7-bit text]]; the phone answers CP-ACK, then CP-DATA [RP-ACK], which the
+     network acknowledges (CP-ACK), and releases the connection.
    Signal strength: layer 1 sends 0x11810 (built at 0x108D6884) to the port at 0x121B7020:
      +0 level in percent (0, 10, 30, 50, 70, 90 for 0-5 bars), +1 dBm + 110. */
 #define CREATE_MESSAGE 0x1087BEF4u      /* (size, id, 0, 0) -> message body */
@@ -210,6 +214,9 @@ void fwlog_install(machine_t *m) { machine_hook(m, VSPRINTF, vsprintf_hook, 0, 0
 enum { ALERTING = 0x01, CALL_PROCEEDING = 0x02, SETUP = 0x05, CONNECT = 0x07,
        CONNECT_ACK = 0x0F, DISCONNECT = 0x25, RELEASE = 0x2D, RELEASE_COMPLETE = 0x2A };
 #define INCOMING_TI 0                   /* transaction the network opens for a call */
+#define SMS_PROTOCOL 9
+enum { CP_DATA = 0x01, CP_ACK = 0x04, RP_DATA_TO_PHONE = 0x01, RP_ACK_FROM_PHONE = 0x02 };
+static const char SMSC[] = "447700900000";            /* the service centre (drama range) */
 #define TI_FLAG 8                       /* in the MMCM transaction field: not opened by the phone */
 #define ANSWER_AFTER 4.0                /* seconds of ringing before the far end answers */
 #define REGISTRATION_DELAY 2.0
@@ -217,7 +224,7 @@ static const uint8_t SIGNAL[2] = {90, 110 - 65};                  /* 5 bars, -65
 static const uint8_t PLMN[3] = {0x00, 0xF1, 0x10};               /* MCC 001, MNC 01 */
 static const uint8_t LAC[2] = {0x00, 0x01};
 
-enum { EV_REGISTER, EV_CONNECT, EV_TO_PHONE, EV_INCOMING };
+enum { EV_REGISTER, EV_CONNECT, EV_TO_PHONE, EV_INCOMING, EV_SMS, EV_SMS_ACK };
 typedef struct { uint64_t due; int kind, call; uint32_t a, b, c; } net_event_t;
 
 struct network {
@@ -228,11 +235,15 @@ struct network {
     int in_call;                              /* a call transaction is open */
     uint32_t call_ti, call_first;             /* its transaction and the phone's first L3 byte */
     char caller[24];                          /* the incoming call's number */
+    char sms_from[24], sms_text[161];         /* the text message on its way */
+    int sms_busy, sms_delivered, sms_ref;
+    uint32_t sms_port_addr;
     net_event_t events[64]; int nevents;
     uint8_t from_phone[256]; int nfrom;       /* call-control types the phone sent (tests) */
 };
 
-typedef struct { network_t *n; uint32_t port; int len; uint8_t body[64]; } post_t;
+typedef struct { network_t *n; uint32_t port; int len; uint8_t body[200]; } post_t;
+static void sms_from_phone(network_t *n, uint32_t transaction, const uint8_t *l3);
 
 static void filled(machine_t *m, void *ctx, uint32_t message) {
     post_t *p = ctx;
@@ -354,15 +365,118 @@ static void sent(machine_t *m, void *ctx) {
         if (h[0] == CALL_CONTROL) after(n, 0.3, EV_CONNECT, 0, h[0], h[1], 0);
     } else if (ident == MMCM_DATA_REQ) {
         arm_mem_read(m->cpu, message, h, 3);
-        if (h[0] == CALL_CONTROL) {
+        if (h[0] == CALL_CONTROL || h[0] == SMS_PROTOCOL) {
             uint8_t l3[256] = {0};
             arm_mem_read(m->cpu, message + 3, l3, h[2]);
-            call_control(n, h[1], l3);
+            if (h[0] == CALL_CONTROL) call_control(n, h[1], l3);
+            else sms_from_phone(n, h[1], l3);
         }
     } else if (ident == MMCM_REL_REQ) {
         drop_call_events(n);
         n->in_call = 0;
     }
+}
+
+/* ---- text messages ---- */
+static int bcd_digits(const char *num, uint8_t *out) {      /* semi-octets, F-padded */
+    int d = 0;
+    for (const char *c = num; *c; c++) {
+        if (*c < '0' || *c > '9') continue;
+        if (d % 2 == 0) out[d / 2] = 0xF0 | (uint8_t)(*c - '0');
+        else out[d / 2] = (out[d / 2] & 0x0F) | (uint8_t)((*c - '0') << 4);
+        d++;
+    }
+    return d;
+}
+
+static uint8_t gsm7(char c) {                               /* GSM 03.38 default alphabet */
+    if (c == '@') return 0x00;
+    if (c == '$') return 0x02;
+    if (c == '_') return 0x11;
+    if (c == '\n' || c == '\r') return (uint8_t)c;
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= ' ' && c <= '?' && c != '$')) return (uint8_t)c;
+    return '?';
+}
+
+static int pack7(const char *text, uint8_t *out, int *septets) {
+    int n = 0, bits = 0, k = 0;
+    uint32_t acc = 0;
+    for (const char *c = text; *c && n < 160; c++, n++) {
+        acc |= (uint32_t)gsm7(*c) << bits;
+        bits += 7;
+        while (bits >= 8) { out[k++] = (uint8_t)acc; acc >>= 8; bits -= 8; }
+    }
+    if (bits) out[k++] = (uint8_t)acc;
+    *septets = n;
+    return k;
+}
+
+static uint8_t bcd_swapped(int v) { return (uint8_t)((v % 10) << 4 | (v / 10 % 10)); }
+
+/* The CP-DATA carrying the message: returns its length. */
+static int sms_deliver(network_t *n, uint8_t *l3) {
+    uint8_t tp[180], rp[200];
+    int t = 0, r = 0;
+    tp[t++] = 0x04;                                         /* SMS-DELIVER, no more messages */
+    uint8_t *oa = tp + t;
+    int digits = bcd_digits(n->sms_from, tp + t + 2);
+    oa[0] = (uint8_t)digits;
+    oa[1] = n->sms_from[0] == '+' ? 0x91 : 0x81;
+    t += 2 + (digits + 1) / 2;
+    tp[t++] = 0x00;                                         /* protocol id */
+    tp[t++] = 0x00;                                         /* GSM 7-bit */
+    int64_t now = pmic_time(n->m->pmic);                    /* time stamp, the phone's clock */
+    if (now < 0) now = 0;
+    int64_t days = now / 86400, sec = now % 86400;
+    int64_t z = days + 719468, era = z / 146097, doe = z - era * 146097;   /* civil from days */
+    int64_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365, doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    int64_t mp = (5 * doy + 2) / 153, day = doy - (153 * mp + 2) / 5 + 1, mon = mp < 10 ? mp + 3 : mp - 9;
+    int64_t year = yoe + era * 400 + (mon <= 2);
+    tp[t++] = bcd_swapped((int)(year % 100)); tp[t++] = bcd_swapped((int)mon); tp[t++] = bcd_swapped((int)day);
+    tp[t++] = bcd_swapped((int)(sec / 3600)); tp[t++] = bcd_swapped((int)(sec / 60 % 60)); tp[t++] = bcd_swapped((int)(sec % 60));
+    tp[t++] = 0x00;                                         /* time zone */
+    int septets, octets = pack7(n->sms_text, tp + t + 1, &septets);
+    tp[t++] = (uint8_t)septets;
+    t += octets;
+
+    rp[r++] = RP_DATA_TO_PHONE;
+    rp[r++] = (uint8_t)(n->sms_ref++);
+    int sd = bcd_digits(SMSC, rp + r + 2);                  /* originator: the service centre */
+    rp[r] = (uint8_t)(1 + (sd + 1) / 2); rp[r + 1] = 0x91;
+    r += 2 + (sd + 1) / 2;
+    rp[r++] = 0;                                            /* destination: none */
+    rp[r++] = (uint8_t)t;
+    memcpy(rp + r, tp, t);
+    r += t;
+
+    int k = 0;
+    l3[k++] = SMS_PROTOCOL | INCOMING_TI << 4;
+    l3[k++] = CP_DATA;
+    l3[k++] = (uint8_t)r;
+    memcpy(l3 + k, rp, r);
+    return k + r;
+}
+
+static void sms_port(machine_t *m, void *ctx, uint32_t port) {
+    network_t *n = ctx;
+    n->sms_port_addr = port;
+    uint8_t body[200] = {SMS_PROTOCOL, TI_FLAG | INCOMING_TI, 0, 0};
+    int len = sms_deliver(n, body + 4);
+    body[3] = (uint8_t)len;
+    post(n, MMCM_EST_IND, body, 4 + len, port);
+}
+
+/* The phone's side of the SMS transaction: acknowledge its RP-ACK. */
+static void sms_from_phone(network_t *n, uint32_t transaction, const uint8_t *l3) {
+    if ((l3[1] & 0x3F) != CP_DATA) return;                  /* CP-ACK: nothing to do */
+    if (l3[3] == RP_ACK_FROM_PHONE) n->sms_delivered = 1;
+    n->sms_busy = 0;
+    after(n, 0.1, EV_SMS_ACK, 0, transaction, l3[0], 0);
+}
+
+static void sms_ack(network_t *n, uint32_t transaction, uint32_t first) {
+    uint8_t body[6] = {SMS_PROTOCOL, (uint8_t)transaction, 0, 2, (uint8_t)(first ^ 0x80), CP_ACK};
+    post(n, MMCM_DATA_IND, body, 6, n->sms_port_addr);
 }
 
 static void reg_req(machine_t *m, void *ctx) {
@@ -391,6 +505,10 @@ static void network_update(void *ctx) {
     for (int i = 0; i < nd; i++) {
         if (due[i].kind == EV_REGISTER) register_phone(n);
         else if (due[i].kind == EV_CONNECT) connect(n, due[i].a, due[i].b);
+        else if (due[i].kind == EV_SMS) {
+            uint32_t args[2] = {SMS_PROTOCOL, TI_FLAG | INCOMING_TI};
+            machine_call(n->m, MMCM_PORT, args, 2, sms_port, n);
+        } else if (due[i].kind == EV_SMS_ACK) sms_ack(n, due[i].a, due[i].b);
         else if (due[i].kind == EV_INCOMING) {
             uint32_t args[2] = {CALL_CONTROL, INCOMING_TI};
             machine_call(n->m, MMCM_PORT, args, 2, incoming_port, n);
@@ -430,6 +548,21 @@ int network_incoming_call(network_t *n, const char *number) {
     after(n, 0.1, EV_INCOMING, 1, 0, 0, 0);
     return 1;
 }
+
+/* A text message to the phone, from `from` (digits, '+' for international); text in ASCII
+   (characters outside the GSM alphabet become '?'), up to 160. 0 if not registered or a
+   message is still being delivered. */
+int network_incoming_sms(network_t *n, const char *from, const char *text) {
+    if (!n->registered || n->sms_busy) return 0;
+    snprintf(n->sms_from, sizeof n->sms_from, "%s", from ? from : "");
+    snprintf(n->sms_text, sizeof n->sms_text, "%s", text ? text : "");
+    n->sms_busy = 1;
+    n->sms_delivered = 0;
+    after(n, 0.1, EV_SMS, 0, 0, 0, 0);
+    return 1;
+}
+
+int network_sms_delivered(network_t *n) { return n->sms_delivered; }
 
 /* The far end hangs up (or stops calling): 0 if there is no call. */
 int network_hang_up(network_t *n) {

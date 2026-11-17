@@ -51,6 +51,9 @@ void     v600_flip(v600_t *, int open);
    yet, already in a call / no call). */
 int      v600_incoming_call(v600_t *, const char *number);
 int      v600_hang_up(v600_t *);
+/* A text message to the phone: from (digits, '+' for international), text (ASCII, up to
+   160 characters). 0 when not possible (not registered yet, one still on its way). */
+int      v600_incoming_sms(v600_t *, const char *from, const char *text);
 
 /* The displays as RGBA (4 bytes per pixel, row by row); serial changes when the picture
    may have changed. The outer display is lit pixels in `on`, the rest in `off`. */

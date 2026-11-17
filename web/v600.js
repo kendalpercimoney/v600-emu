@@ -58,6 +58,7 @@ function httpCore(server, on) {
     flip(open) { get(`/control?do=flip&open=${open ? 1 : 0}`); },
     call(number) { get(`/control?do=call&number=${encodeURIComponent(number)}`); },
     hangUp() { get('/control?do=hangup'); },
+    sms(from, text) { get(`/control?do=sms&number=${encodeURIComponent(from)}&text=${encodeURIComponent(text)}`); },
   };
 }
 
@@ -124,6 +125,7 @@ function wasmCore(on) {
     flip(open) { post({ t: 'flip', open }); },
     call(number) { post({ t: 'call', number }); },
     hangUp() { post({ t: 'hangup' }); },
+    sms(from, text) { post({ t: 'sms', from, text }); },
   };
 }
 
@@ -192,6 +194,10 @@ const on = {
 };
 
 // ---- the contract ----------------------------------------------------------------------
+const madeUpNumber = () => '07700900' + String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+const SAMPLE_TEXTS = ['Running late, be there in 10', 'Did you see the match last night?',
+  'Call me when you get this', 'Happy birthday! x', 'Pub at 8?'];
+
 const listeners = [];
 function setState(changes) {
   let changed = false;
@@ -218,11 +224,11 @@ const OS = {
   setSpeakerFilter() {},                          // the speaker model: not yet
   // The pretend network: someone calls (default: a made-up number from the range Ofcom
   // keeps for drama), and they hang up.
-  incomingCall(number) {
-    core.call(number || '07700900' + String(Math.floor(Math.random() * 1000)).padStart(3, '0'));
-  },
+  incomingCall(number) { core.call(number || madeUpNumber()); },
   endCall() { core.hangUp(); },
-  incomingMessage() {},                           // text messages: not yet
+  incomingMessage(from, text) {
+    core.sms(from || madeUpNumber(), text || SAMPLE_TEXTS[Math.floor(Math.random() * SAMPLE_TEXTS.length)]);
+  },
 };
 const Snd = {
   ac() {

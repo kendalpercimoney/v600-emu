@@ -77,10 +77,18 @@ def main():
     check('the phone releases the call', RELEASE in m.network.from_phone[before:])
     shot('7-they-hung-up')
 
+    check('a text message arrives', m.network.incoming_sms('07700900456', 'Hello from the self-test'))
+    run('+4.0')
+    check('the phone acknowledges it', m.network.sms_delivered)
+    shot('8-text-message')
+    run('soft_right', '+2.0')
+    shot('9-text-read')
+    run('red', '+2.0')
+
     updates = m.ati.outer.updates
     board.set_flip(m, False)
     run('+3.0')
-    m.ati.outer.image().resize((288, 96)).save(OUT / '8-outer.png')
+    m.ati.outer.image().resize((288, 96)).save(OUT / '10-outer.png')
     check('outer display shows the clock when closed',
           m.ati.outer.updates > updates and m.ati.outer.pixels.sum() > 50)
     board.set_flip(m, True)

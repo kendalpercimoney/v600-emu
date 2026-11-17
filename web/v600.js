@@ -211,6 +211,7 @@ const on = {
     if (!!css !== lightOn) hw('ringLight', lightOn = !!css);
   },
   status(s) {
+    window.V600_STATUS = s;                       // for diagnostics (phone time, stopped)
     if (s.stopped) console.warn('emulator stopped:', s.stopped);
     if (s.vibrate !== undefined && s.vibrate !== lastVibrate) hw('vibrate', lastVibrate = s.vibrate);
     if (s.light !== undefined) on.light(s.light);
@@ -285,6 +286,18 @@ window.HW = Object.assign({}, defaults, window.HW || {});
 function hw(name, ...args) { try { window.HW[name](...args); } catch (e) {} }
 
 const core = SERVER ? httpCore(SERVER, on) : wasmCore(on);
+
+// Every 10 s, how phone time keeps up with the clock (the app's console shows it).
+let lastPace = null;
+setInterval(() => {
+  const s = window.V600_STATUS, now = performance.now() / 1000;
+  if (!s) return;
+  if (lastPace) {
+    const rate = (s.seconds - lastPace[1]) / (now - lastPace[0]);
+    console.log(`V600: phone time ${s.seconds.toFixed(1)} s, ${rate.toFixed(2)}x real time`);
+  }
+  lastPace = [now, s.seconds];
+}, 10000);
 addEventListener('pointerdown', () => Snd.ac(), { once: true });
 
 // desktop test keys (as in the replica's index.html)

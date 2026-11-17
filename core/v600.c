@@ -84,10 +84,10 @@ int v600_run(v600_t *p, uint32_t microseconds) {
     if (m->powered_off) return 0;
     p->deadline = m->insns + (uint64_t)microseconds * (CPU_IPS / 1000000);
     while (m->insns < p->deadline) {
-        release_due(p);
-        uint64_t r = next_release(p), stop = r < p->deadline ? r : p->deadline;
-        uint64_t left = stop > m->insns ? stop - m->insns : 1, n = left < 2000000 ? left : 2000000;
-        if (machine_run(m, n > 20000 ? n : 20000, 20000, 0xFFFFFFFF, 0xFFFFFFFF) == RUN_ERROR) {
+        release_due(p);                  /* (the timer below stops idle skips at key-ups) */
+        /* One slice at a time: an idle fast-forward inside a longer run would jump the clock
+           to the deadline and the run would then carry on past it. */
+        if (machine_run(m, 20000, 20000, 0xFFFFFFFF, 0xFFFFFFFF) == RUN_ERROR) {
             p->failed = 1;
             return 1;
         }

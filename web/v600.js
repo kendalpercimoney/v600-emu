@@ -76,6 +76,7 @@ function wasmCore(on) {
     else if (m.t === 'media') on.media(m.id, m.at, m.mp3);
     else if (m.t === 'status') on.status(m);
     else if (m.t === 'vibrate') hw('vibrate', m.on);
+    else if (m.t === 'light') on.light(m.rgb ? '#' + m.rgb.toString(16).padStart(6, '0') : null);
     else if (m.t === 'state') V600Store.saveState(m.bytes);
     else if (m.t === 'error') on.error(m.text);
   }
@@ -179,9 +180,16 @@ const on = {
     playAt += pcm.length / RATE;
   },
   media(id, at, mp3) { if (actx) playClip(id, at, mp3); },
+  // The ring lights: the host's HW.ringLight(on) when they go on or off; its lightColor()
+  // (the default below, unless the host has its own) gives the colour the phone drives.
+  light(css) {
+    if (css) lightCss = css;
+    if (!!css !== lightOn) hw('ringLight', lightOn = !!css);
+  },
   status(s) {
     if (s.stopped) console.warn('emulator stopped:', s.stopped);
     if (s.vibrate !== undefined && s.vibrate !== lastVibrate) hw('vibrate', lastVibrate = s.vibrate);
+    if (s.light !== undefined) on.light(s.light);
     if (s.flip_open !== undefined) setState({ open: !!s.flip_open });
   },
   error(text) {
@@ -200,7 +208,7 @@ const madeUpNumber = () => '07700900' + String(Math.floor(Math.random() * 1000))
 const SAMPLE_TEXTS = ['Running late, be there in 10', 'Did you see the match last night?',
   'Call me when you get this', 'Happy birthday! x', 'Pub at 8?'];
 
-let lastVibrate = false;
+let lastVibrate = false, lightOn = false, lightCss = '#3d9bff';
 const listeners = [];
 function setState(changes) {
   let changed = false;
@@ -243,7 +251,7 @@ const Snd = {
 
 // window.HW: the host's hooks over these defaults (as the replica's host.js merges them).
 const defaults = {
-  vibrate() {}, ringLight() {}, previewLight() {}, lightColor() { return '#3d9bff'; },
+  vibrate() {}, ringLight() {}, previewLight() {}, lightColor() { return lightCss; },
   flip(open) { OS.setOpen(open); }, haptic() {},
   camera: { prefiltered: false, start() {}, stop() {}, frame() { return false; } },
 };

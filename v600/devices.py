@@ -14,7 +14,7 @@ LOG = ctypes.CFUNCTYPE(None, i, ctypes.c_char_p)
 HOST_HOOK = ctypes.CFUNCTYPE(None, i)
 HOST_TIMER = ctypes.CFUNCTYPE(dbl, i, i)
 HOST_DEVICE = ctypes.CFUNCTYPE(u32, i, i, u32, i, u32)
-PART_CPU, PART_KEYPAD, PART_EDGEPORT, PART_PMIC, PART_ATI, PART_AUDIO, PART_FLASH, PART_NETWORK = range(8)
+PART_CPU, PART_KEYPAD, PART_EDGEPORT, PART_PMIC, PART_ATI, PART_AUDIO, PART_FLASH, PART_NETWORK, PART_QSPI = range(9)
 
 
 def _lib():
@@ -25,7 +25,7 @@ def _lib():
                 ('v600_build', None, [p, i, i]), ('board_press', None, [p, i, i]),
                 ('board_flip', None, [p, i]), ('v600_part', p, [p, i]),
                 ('pmic_start_clock', None, [p, p, u32, i64]),
-                ('pmic_vibrator', i, [p]),
+                ('pmic_vibrator', i, [p]), ('qspi_lights', u32, [p]),
                 ('machine_set_log', None, [p, LOG]), ('machine_set_host_hook', None, [p, HOST_HOOK]),
                 ('machine_set_host_timer', None, [p, HOST_TIMER]),
                 ('machine_set_host', None, [p, HOST_DEVICE]),

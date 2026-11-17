@@ -17,6 +17,7 @@
 #define TABLE_PTR 0x1232E5F8u
 #define DEV_PMIC 0x10800562u
 #define DEV_ATI 0x1080058Cu
+#define DEV_LED 0x1080059Au
 
 /* ---- power IC (PCAP2: 32 x 25-bit registers) ---------------------------------------------
    SPI word: bit 31 = write, 30..26 = register, 24..0 = data; a read returns the register.
@@ -159,6 +160,17 @@ int pmic_vibrator(pmic_t *p) { return (p->regs[AUX_VREG] & VIBRATOR) != 0; }
 /* The phone's clock (local time, s since 1970), or -1 while it is not running. */
 int64_t pmic_time(pmic_t *p) { return p->m ? clock_now(p) : -1; }
 
+/* ---- LED driver (QSPI channel 4): the ring and event lights ------------------------------
+   Writes only: (register, value) byte pairs, a 0 register ends them. 0x09 / 0x0B / 0x0D are
+   the red / green / blue levels (0-15; the patterns fade them), 0x01 bits 5 / 4 / 3 switch
+   those channels on (the power-up light show steps through them; Solar uses red + green),
+   0x17 = 0x60 while any is lit. 0x13 / 0x15 (100 / 150 at start) are not understood. */
+static uint32_t lights(const uint8_t *r) {
+    uint32_t red = r[0x01] & 0x20 ? (r[0x09] & 15) * 17u : 0, green = r[0x01] & 0x10 ? (r[0x0B] & 15) * 17u : 0;
+    uint32_t blue = r[0x01] & 0x08 ? (r[0x0D] & 15) * 17u : 0;
+    return red << 16 | green << 8 | blue;
+}
+
 /* ---- QSPI ---------------------------------------------------------------------------- */
 struct qspi {
     device_t d;
@@ -166,7 +178,10 @@ struct qspi {
     uint32_t done;
     pmic_t *pmic;
     ati_t *ati;
+    uint8_t led[128];
 };
+
+uint32_t qspi_lights(qspi_t *q) { return lights(q->led); }
 
 static uint32_t read_word(machine_t *m, uint32_t a, int *ok) {
     uint8_t b[4];
@@ -200,6 +215,8 @@ static void transfer(qspi_t *q, int ch) {
             for (int k = 0; k < 4; k++) reply[k] = r >> (8 * (3 - k));
         } else if (e[0] == DEV_ATI && q->ati) {
             ati_serial_transfer(q->ati, data, (int)n, reply);
+        } else if (e[0] == DEV_LED) {
+            for (int k = 0; k + 1 < n && data[k]; k += 2) q->led[data[k] & 0x7F] = data[k + 1];
         }
         int64_t at = rx != tx ? rx : tx;
         if (at >= 0 && at + n <= 0x1000) memcpy(q->mem + at, reply, n);

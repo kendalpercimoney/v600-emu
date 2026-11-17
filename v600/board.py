@@ -4,7 +4,7 @@ import calendar
 import time
 
 from .devices import (ATIChip, AudioDSP, Counter, Keypad, PART_ATI, PART_AUDIO, PART_FLASH,
-                      PART_NETWORK, PART_PMIC, _lib)
+                      PART_NETWORK, PART_PMIC, PART_QSPI, _lib)
 from .flash import Flash
 from .network import Network
 
@@ -30,6 +30,13 @@ def set_flip(m, open_):
 def press(m, name, down=True):
     """A key by name (devices.Keypad.CODES, or 'red': the power key on the PCAP)."""
     _lib().board_press(m.c, -1 if name == 'red' else Keypad.INDEX[name], 1 if down else 0)
+
+
+def outputs(m):
+    """(vibrator running, lights as 0xRRGGBB or 0): what the phone drives for the host."""
+    lib = _lib()
+    return (bool(lib.pmic_vibrator(lib.v600_part(m.c, PART_PMIC))),
+            lib.qspi_lights(lib.v600_part(m.c, PART_QSPI)))
 
 
 def set_clock(m, now=None):

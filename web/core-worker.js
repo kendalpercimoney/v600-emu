@@ -6,7 +6,7 @@
 //      {t:'call', number} (someone calls) {t:'hangup'} (they hang up) {t:'sms', from, text}
 // Out: {t:'ready'} {t:'error', text} {t:'lcd', rgba} {t:'outer', rgba} {t:'audio', start, pcm}
 //      {t:'media', id, at, mp3|null} {t:'status', seconds, stopped} {t:'state', bytes}
-//      {t:'vibrate', on}
+//      {t:'vibrate', on} {t:'light', rgb} (the ring lights, 0xRRGGBB, 0 = dark)
 'use strict';
 
 self.V600Runner = function (post, coreUrl) {
@@ -15,7 +15,7 @@ self.V600Runner = function (post, coreUrl) {
   const STEP_MS = 10, SAVE_MS = 5000, CLOCK_MS = 60000;
   let M, p, buf, stopped = null;
   let t0 = 0, phone0 = 0, lcdSerial = -1, outerSerial = -1, changes = -1n, lastSave = 0, lastClock = 0;
-  let vibrating = 0;
+  let vibrating = 0, light = 0;
 
   // The phone keeps local time: seconds since 1970 as read on a wall clock here. Set again
   // every minute, as phone time stops while the page is hidden (a time set on the phone stays).
@@ -97,6 +97,8 @@ self.V600Runner = function (post, coreUrl) {
     }
     const v = M._v600_vibrator(p);
     if (v !== vibrating) { vibrating = v; post({ t: 'vibrate', on: !!v }); }
+    const l = M._v600_lights(p) >>> 0;
+    if (l !== light) { light = l; post({ t: 'light', rgb: l }); }
     post({ t: 'status', seconds: M._v600_seconds(p), stopped });
   }
 

@@ -110,7 +110,8 @@ void v600_build(machine_t *m, int flip_open, int sim_card) {
     /* QSPI devices: the power IC, and on chip select 6 the ATI Imageon's serial interface
        (CHIP_ID: device 0x5745, ATI vendor 0x1002), whose I2C bus has the camera sensor. */
     m->ati = ati_new();
-    machine_attach(m, 0x24851000, 0x1000, (device_t *)qspi_new(m, pmic, m->ati));
+    m->qspi = qspi_new(m, pmic, m->ati);
+    machine_attach(m, 0x24851000, 0x1000, (device_t *)m->qspi);
     machine_attach(m, 0x2485BFF0, 0x10, (device_t *)dsp);         /* the MDI registers */
     machine_set_ticks(m, (1 << 19) / (TIME_UNIT_US * 1e-6 * CPU_IPS));
     machine_attach(m, 0x2484A000, 0x8, &counter_new(m)->d);
@@ -165,8 +166,8 @@ void board_press(machine_t *m, int key, int down) {
 void board_flip(machine_t *m, int open) { edgeport_set_pin(m->edgeport, 0, open); }
 
 /* Parts of the board, for the host: 0 CPU, 1 keypad, 2 edge port, 3 power IC, 4 graphics
-   chip, 5 audio, 6 flash, 7 network. */
+   chip, 5 audio, 6 flash, 7 network, 8 QSPI (and the LED driver). */
 void *v600_part(machine_t *m, int which) {
-    void *parts[8] = {m->cpu, m->keypad, m->edgeport, m->pmic, m->ati, m->audio, m->flash, m->network};
-    return which >= 0 && which < 8 ? parts[which] : 0;
+    void *parts[9] = {m->cpu, m->keypad, m->edgeport, m->pmic, m->ati, m->audio, m->flash, m->network, m->qspi};
+    return which >= 0 && which < 9 ? parts[which] : 0;
 }

@@ -34,7 +34,8 @@
   .buzz { animation: buzz 0.08s linear infinite; }          /* the vibrator is running */
   @keyframes buzz { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-2px, 1px); }
                     75% { transform: translate(2px, -1px); } }
-  .outer { background: var(--bezel); border-radius: 8px; padding: 6px; display: inline-block; margin: 6px 0 4px; }
+  .outer { background: var(--bezel); border-radius: 8px; padding: 6px; display: inline-block; margin: 6px 0 4px;
+           transition: box-shadow 0.1s; }   /* box-shadow: the ring lights, when lit */
   .outer img { display: block; width: 288px; max-width: 100%; image-rendering: pixelated; border-radius: 3px; }
   .controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
   .controls button { padding: 8px 12px; font-size: 13px; }
@@ -193,6 +194,7 @@ setInterval(async () => {
       `Phone time ${s.seconds}s` + (s.lag > 0.5 ? ` (running ${s.lag}s behind real time)` : '');
     document.getElementById('log').textContent = s.log.join('\n');
     phoneEl.classList.toggle('buzz', !!s.vibrate);
+    document.querySelector('.outer').style.boxShadow = s.light ? `0 0 18px 6px ${s.light}` : '';
     document.getElementById('stopped').textContent = s.stopped || '';
     if (s.flip_open !== flipOpen) showFlip(s.flip_open);
   } catch (e) {}

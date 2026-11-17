@@ -206,5 +206,6 @@ size_t v600_save_state(v600_t *p, uint8_t *out) {
 }
 
 int v600_vibrator(v600_t *p) { return pmic_vibrator(p->m->pmic); }
+uint32_t v600_lights(v600_t *p) { return qspi_lights(p->m->qspi); }
 
 void v600_set_log(v600_t *p, void (*fn)(int kind, const char *text)) { machine_set_log(p->m, fn); }

@@ -71,7 +71,7 @@ def paired_iphone():
     """The UDID of the first connected, paired physical iPhone."""
     out = subprocess.run(['xcrun', 'devicectl', 'list', 'devices'], capture_output=True, text=True).stdout
     for line in out.splitlines():
-        if 'available (paired)' in line and 'iPhone' in line:
+        if ('available (paired)' in line or ' connected ' in line) and 'physical' in line:
             return next(w for w in line.split() if w.count('-') == 1 and len(w) > 20)
     sys.exit('No paired iPhone connected (xcrun devicectl list devices)')
 

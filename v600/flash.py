@@ -1,7 +1,8 @@
-"""The phone's NOR flash (32 MB at 0x10000000): the command state machine is in C
-(core/flash.c); this keeps the state file. The phone's settings, contacts and messages
-live in the flash file system, so the blocks that differ from the firmware image are saved
-and restored: 4-byte block address then the 128 KB block, repeated."""
+"""The phone's flash state file. The flash itself (32 MB at 0x10000000, Intel command set)
+is core/flash.c. The phone's settings, contacts and messages live in its file system, so
+the blocks that differ from the firmware image are saved and restored: 4-byte block
+address then the 128 KB block, repeated."""
+import ctypes
 from pathlib import Path
 
 from .devices import _lib
@@ -11,27 +12,32 @@ BLOCK = 0x20000
 
 
 class Flash:
-    def __init__(self, m):
+    def __init__(self, m, ptr):
         self.lib = _lib()
+        self.m = m
+        self.ptr = ptr
         self.uc = m.uc
-        self.cflash = self.lib.flash_new(m.c)
-        self.original = bytearray(self.uc.mem_read(BASE, SIZE))  # as loaded from the firmware
+        self.original = bytearray(self.uc.mem_read(BASE, SIZE))   # firmware + breakpoints
 
     @property
     def writes(self):
         """Program / erase operations so far, to tell when to save."""
-        return self.lib.flash_writes(self.cflash)
+        return self.lib.flash_writes(self.ptr)
 
     def idle(self):
         """No command in progress and every partition reading the array: safe to snapshot."""
-        return bool(self.lib.flash_idle(self.cflash))
+        return bool(self.lib.flash_idle(self.ptr))
 
-    def patched(self, addr, data):
-        """The emulator changed code here (a breakpoint, Machine.hook): not phone data."""
-        self.original[addr - BASE:addr - BASE + len(data)] = data
+    def _patch_original(self):
+        """Breakpoints planted in flash since (code the emulator changed, not phone data)."""
+        addr, data, size = (ctypes.c_uint32 * 512)(), (ctypes.c_uint8 * 2048)(), (ctypes.c_int * 512)()
+        for k in range(self.lib.machine_flash_patches(self.m.c, addr, data, size, 512)):
+            off = addr[k] - BASE
+            self.original[off:off + size[k]] = bytes(data[4 * k:4 * k + size[k]])
 
     def save(self, path):
-        self.lib.flash_flush(self.cflash)
+        self.lib.flash_flush(self.ptr)
+        self._patch_original()
         cur = bytes(self.uc.mem_read(BASE, SIZE))
         out = bytearray()
         for off in range(0, SIZE, BLOCK):

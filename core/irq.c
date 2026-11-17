@@ -160,3 +160,9 @@ ostimer_t *ostimer_new(machine_t *m) {
     t->d = (device_t){ostimer_read, ostimer_write, m};
     return t;
 }
+
+/* The same in counter units as a double (machine timers), or -1. */
+double ostimer_next(void *t) {
+    uint64_t v = ostimer_next_event(t);
+    return v == UINT64_MAX ? -1 : (double)v;
+}

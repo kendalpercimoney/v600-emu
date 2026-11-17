@@ -1,5 +1,5 @@
-"""The C CPU core (core/, built by `make`) behind the subset of Unicorn's Python API the
-emulator uses, so Machine can run on either: V600_CPU=c picks this one (see machine.py)."""
+"""The C library (core/, built by `make`), and its CPU behind the subset of Unicorn's
+Python API the tools use (registers, memory, hooks)."""
 import ctypes
 from pathlib import Path
 
@@ -46,16 +46,22 @@ class Core:
     """Unicorn-compatible CPU object (the methods Machine and the models call)."""
     lib = None
 
-    def __init__(self, *_mode):
-        if Core.lib is None:
-            Core.lib = _load()
-        self.s = Core.lib.arm_new()
+    @classmethod
+    def load(cls):
+        if cls.lib is None:
+            cls.lib = _load()
+        return cls.lib
+
+    def __init__(self, ptr=None):
+        Core.load()
+        self.owner = ptr is None                     # else the machine owns the CPU
+        self.s = ptr or Core.lib.arm_new()
         self.hooks = {}                              # id -> (kind, fn, user_data)
         self._cb = CALLBACK(self._dispatch)          # keep a reference: C holds the pointer
         Core.lib.arm_set_callback(self.s, self._cb, None)
 
     def __del__(self):
-        if self.s and Core.lib:
+        if self.owner and self.s and Core.lib:
             Core.lib.arm_free(self.s)
             self.s = None
 

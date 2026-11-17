@@ -553,16 +553,20 @@ static void exec_thumb(arm_t *s, uint32_t insn, uint32_t pc) {
 static void call_code_hooks(arm_t *s, uint32_t pc) {
     for (int i = 0; i < s->nhooks; i++) {
         const hook_t *h = &s->hooks[i];
-        if (h->live && h->kind == HK_CODE && (h->begin > h->end || (pc >= h->begin && pc <= h->end)))
-            s->cb(s->host, i, 0, pc, s->cpsr & T_BIT ? 2 : 4, 0);
+        if (h->live && h->kind == HK_CODE && (h->begin > h->end || (pc >= h->begin && pc <= h->end))) {
+            if (h->fn) h->fn(h->ctx, 0, pc, s->cpsr & T_BIT ? 2 : 4, 0);
+            else s->cb(s->host, i, 0, pc, s->cpsr & T_BIT ? 2 : 4, 0);
+        }
     }
 }
 
 static void raise_interrupt(arm_t *s, int intno) {
     if (!s->has_intr) { s->err = ERR_EXCEPTION; s->stop = 1; return; }
     for (int i = 0; i < s->nhooks; i++)
-        if (s->hooks[i].live && s->hooks[i].kind == HK_INTR)
-            s->cb(s->host, i, 0, (uint32_t)intno, 0, 0);
+        if (s->hooks[i].live && s->hooks[i].kind == HK_INTR) {
+            if (s->hooks[i].fn) s->hooks[i].fn(s->hooks[i].ctx, 0, (uint32_t)intno, 0, 0);
+            else s->cb(s->host, i, 0, (uint32_t)intno, 0, 0);
+        }
 }
 
 int arm_run(arm_t *s, uint32_t begin, uint32_t until, uint64_t count) {

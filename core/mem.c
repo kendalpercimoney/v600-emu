@@ -121,7 +121,8 @@ static int unmapped(arm_t *s, int access, uint32_t a, int n, uint32_t v) {
     int retry = 0;
     for (int i = 0; i < s->nhooks; i++)
         if (s->hooks[i].live && s->hooks[i].kind == HK_UNMAPPED)
-            retry |= s->cb(s->host, i, access, a, n, v);
+            retry |= s->hooks[i].fn ? s->hooks[i].fn(s->hooks[i].ctx, access, a, n, v)
+                                    : s->cb(s->host, i, access, a, n, v);
     if (retry && page_of(s, a))
         return 1;
     if (!s->err)

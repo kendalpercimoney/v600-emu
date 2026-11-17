@@ -30,7 +30,9 @@
    which turns the phone off after ~2 s. Bit 12 is the headset detect, low = a headset is
    plugged in (the phone then answers calls by itself and shows the headset icon): idle, no
    headset. The PCAP's interrupt pin is edge port INT1. */
-enum { ISR = 0, MSR = 1, PSTAT = 2, AUX_VREG = 7, ADC = 9, ADR = 10, TOD = 14, TODA = 15, DAY = 16, DAYA = 17 };
+enum { ISR = 0, MSR = 1, PSTAT = 2, AUX_VREG = 7, ADC = 9, ADR = 10, TOD = 14, TODA = 15, DAY = 16, DAYA = 17,
+       PERIPH = 21 };
+#define BACKLIGHT 1u                    /* PERIPH: the display and keypad backlight, on / off */
 #define VIBRATOR (1u << 19)             /* AUX_VREG: the vibrator motor's supply, on / off */
 #define ONOFF (1u << 7)
 #define PSTAT_IDLE ((1u << 7) | (1u << 8) | (1u << 12))
@@ -156,6 +158,7 @@ void pmic_set_reg(pmic_t *p, int reg, uint32_t v) { p->regs[reg & 31] = v; }
 void pmic_connect(pmic_t *p, edgeport_t *int_pin) { p->int_pin = int_pin; }
 int pmic_int_level(pmic_t *p) { return int_level(p); }
 int pmic_vibrator(pmic_t *p) { return (p->regs[AUX_VREG] & VIBRATOR) != 0; }
+int pmic_backlight(pmic_t *p) { return (p->regs[PERIPH] & BACKLIGHT) != 0; }
 
 /* The phone's clock (local time, s since 1970), or -1 while it is not running. */
 int64_t pmic_time(pmic_t *p) { return p->m ? clock_now(p) : -1; }

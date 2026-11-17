@@ -256,6 +256,7 @@ void        pmic_power_key(pmic_t *, int down);
 void        pmic_start_clock(pmic_t *, machine_t *, uint32_t ips, int64_t now);   /* local time, s since 1970 */
 int64_t     pmic_time(pmic_t *);                       /* -1 until started */
 int         pmic_vibrator(pmic_t *);                   /* 1 while the motor runs */
+int         pmic_backlight(pmic_t *);                  /* 1 while the backlight is on */
 qspi_t     *qspi_new(machine_t *, pmic_t *, ati_t *);
 uint32_t    qspi_lights(qspi_t *);                     /* ring / event lights: 0xRRGGBB, 0 = dark */
 dsp_t      *dsp_new(machine_t *);

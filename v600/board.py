@@ -33,10 +33,12 @@ def press(m, name, down=True):
 
 
 def outputs(m):
-    """(vibrator running, lights as 0xRRGGBB or 0): what the phone drives for the host."""
+    """(vibrator running, lights as 0xRRGGBB or 0, backlight on): what the phone drives for
+    the host."""
     lib = _lib()
-    return (bool(lib.pmic_vibrator(lib.v600_part(m.c, PART_PMIC))),
-            lib.qspi_lights(lib.v600_part(m.c, PART_QSPI)))
+    pmic = lib.v600_part(m.c, PART_PMIC)
+    return (bool(lib.pmic_vibrator(pmic)), lib.qspi_lights(lib.v600_part(m.c, PART_QSPI)),
+            bool(lib.pmic_backlight(pmic)))
 
 
 def set_clock(m, now=None):

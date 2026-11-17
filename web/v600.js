@@ -76,6 +76,7 @@ function wasmCore(on) {
     else if (m.t === 'media') on.media(m.id, m.at, m.mp3);
     else if (m.t === 'status') on.status(m);
     else if (m.t === 'vibrate') hw('vibrate', m.on);
+    else if (m.t === 'backlight') on.backlight(m.on);
     else if (m.t === 'light') on.light(m.rgb ? '#' + m.rgb.toString(16).padStart(6, '0') : null);
     else if (m.t === 'state') V600Store.saveState(m.bytes);
     else if (m.t === 'error') on.error(m.text);
@@ -156,11 +157,22 @@ async function playClip(id, at, mp3) {
 }
 
 // ---- what the core reports ----------------------------------------------------------------
+let lastLcd = null, backlit = true;
 const on = {
+  // The canvas is what the host shows, so a dark backlight is drawn into it.
   lcd(img) {
+    lastLcd = img;
     if (img instanceof ImageData) lcd.putImageData(img, 0, 0);
     else lcd.drawImage(img, 0, 0, 176, 220);
+    if (!backlit) { lcd.fillStyle = 'rgba(0, 0, 0, 0.65)'; lcd.fillRect(0, 0, 176, 220); }
     OS.frame++;
+  },
+  // Backlight off (the timeout): the app's keypad light follows OS.st.sleep.
+  backlight(lit) {
+    if (lit === backlit) return;
+    backlit = lit;
+    setState({ sleep: lit ? 0 : 2 });
+    if (lastLcd) on.lcd(lastLcd);
   },
   outer(rgba) {
     ext.putImageData(new ImageData(rgba, 96, 32), 0, 0);
@@ -190,6 +202,7 @@ const on = {
     if (s.stopped) console.warn('emulator stopped:', s.stopped);
     if (s.vibrate !== undefined && s.vibrate !== lastVibrate) hw('vibrate', lastVibrate = s.vibrate);
     if (s.light !== undefined) on.light(s.light);
+    if (s.backlight !== undefined) on.backlight(s.backlight);
     if (s.flip_open !== undefined) setState({ open: !!s.flip_open });
   },
   error(text) {

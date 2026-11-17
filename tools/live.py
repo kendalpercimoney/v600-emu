@@ -209,10 +209,10 @@ class Phone:
 
     def status(self):
         lag = (time.monotonic() - self.wall0) - (self.m.insns - self.virt0) / CPU_IPS
-        vibrate, light = board.outputs(self.m)
+        vibrate, light, backlight = board.outputs(self.m)
         return {'seconds': round(self.m.insns / CPU_IPS, 1), 'lag': round(lag, 2),
                 'log': self.messages[-6:], 'flip_open': self.flip_open, 'stopped': self.stopped,
-                'vibrate': vibrate, 'light': f'#{light:06x}' if light else None}
+                'vibrate': vibrate, 'light': f'#{light:06x}' if light else None, 'backlight': backlight}
 
 
 def png(img):

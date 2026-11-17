@@ -80,6 +80,8 @@ size_t   v600_save_state(v600_t *, uint8_t *out);
 /* Outputs for the host's hardware: 1 while the vibrator motor runs (it pulses in the
    ring style's pattern). */
 int      v600_vibrator(v600_t *);
+/* 1 while the backlight is on (the display and the keypad; off after the timeout). */
+int      v600_backlight(v600_t *);
 /* The ring / event lights (round the outer display) as 0xRRGGBB; 0 when dark. */
 uint32_t v600_lights(v600_t *);
 

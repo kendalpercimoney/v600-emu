@@ -77,6 +77,7 @@ function wasmCore(on) {
     else if (m.t === 'status') on.status(m);
     else if (m.t === 'vibrate') hw('vibrate', m.on);
     else if (m.t === 'backlight') on.backlight(m.on);
+    else if (m.t === 'power') on.power(m.on);
     else if (m.t === 'light') on.light(m.rgb ? '#' + m.rgb.toString(16).padStart(6, '0') : null);
     else if (m.t === 'state') V600Store.saveState(m.bytes);
     else if (m.t === 'error') on.error(m.text);
@@ -167,6 +168,17 @@ const on = {
     if (!backlit) { lcd.fillStyle = 'rgba(0, 0, 0, 0.65)'; lcd.fillRect(0, 0, 176, 220); }
     OS.frame++;
   },
+  // Switched off (red held) or on again: dark displays, OS.st.power for the host.
+  power(up) {
+    if (up === OS.st.power) return;
+    setState({ power: up });
+    if (!up) {
+      lastLcd = null;
+      lcd.fillStyle = '#000'; lcd.fillRect(0, 0, 176, 220);
+      ext.fillStyle = '#000'; ext.fillRect(0, 0, 96, 32);
+      OS.frame++;
+    }
+  },
   // Backlight off (the timeout): the app's keypad light follows OS.st.sleep.
   backlight(lit) {
     if (lit === backlit) return;
@@ -203,6 +215,7 @@ const on = {
     if (s.vibrate !== undefined && s.vibrate !== lastVibrate) hw('vibrate', lastVibrate = s.vibrate);
     if (s.light !== undefined) on.light(s.light);
     if (s.backlight !== undefined) on.backlight(s.backlight);
+    if (s.power !== undefined) on.power(s.power);
     if (s.flip_open !== undefined) setState({ open: !!s.flip_open });
   },
   error(text) {

@@ -48,6 +48,37 @@ regs_t *regs_new(machine_t *m, uint32_t size, uint32_t clear_word, uint32_t clea
     return r;
 }
 
+/* -- Watchdog at 0x24849000, 16-bit registers: +0 WCR, +2 WSR (the service sequence) --------
+   WCR bit 2 WDE (enabled), bit 5 WDA, active low: drives the watchdog pin, which on this
+   board cuts the power. The firmware's power-down ends by writing 0x7E56 (WDA low); at
+   boot it writes 0x7E76. Kept as plain storage otherwise (the timeout is not modelled). */
+#define WDE (1u << 2)
+#define WDA (1u << 5)
+typedef struct { device_t d; uint8_t r[4]; } wdog_t;
+
+static uint32_t wdog_read(device_t *d, uint32_t off, int size) {
+    wdog_t *w = (wdog_t *)d;
+    uint32_t v = 0;
+    for (int i = 0; i < size; i++) v = v << 8 | (off + i < 4 ? w->r[off + i] : 0);
+    return v;
+}
+
+static void wdog_write(device_t *d, uint32_t off, int size, uint32_t v) {
+    wdog_t *w = (wdog_t *)d;
+    for (int i = 0; i < size; i++) if (off + i < 4) w->r[off + i] = v >> (8 * (size - 1 - i));
+    uint32_t wcr = (uint32_t)w->r[0] << 8 | w->r[1];
+    if (off < 2 && (wcr & WDE) && !(wcr & WDA)) {
+        d->m->powered_off = 1;
+        machine_stop(d->m, "power off");
+    }
+}
+
+device_t *wdog_new(machine_t *m) {
+    wdog_t *w = calloc(1, sizeof *w);
+    w->d = (device_t){wdog_read, wdog_write, m};
+    return &w->d;
+}
+
 /* -- KPP keypad port at 0x2484E000 (Neptune LTE spec ch. 58), 16-bit registers -------------
    +0 KPCR (KCO 15:8, KRE row enable 7:0), +2 KPSR (bit 0 KPKD key detect, w1c), +4 KDDR
    (column direction 15:8), +6 KPDR (columns 15:8, rows 7:0). Lines are pulled-up inputs; a

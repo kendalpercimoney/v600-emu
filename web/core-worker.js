@@ -7,6 +7,8 @@
 // Out: {t:'ready'} {t:'error', text} {t:'lcd', rgba} {t:'outer', rgba} {t:'audio', start, pcm}
 //      {t:'media', id, at, mp3|null} {t:'status', seconds, stopped} {t:'state', bytes}
 //      {t:'vibrate', on} {t:'light', rgb} (the ring lights, 0xRRGGBB, 0 = dark) {t:'backlight', on}
+//      {t:'power', on}: the phone switched itself off (red held); the red key switches it on
+//      again: a new core from the firmware and the state saved as it went off.
 'use strict';
 
 self.V600Runner = function (post, coreUrl) {
@@ -16,6 +18,7 @@ self.V600Runner = function (post, coreUrl) {
   let M, p, buf, stopped = null;
   let t0 = 0, phone0 = 0, lcdSerial = -1, outerSerial = -1, changes = -1n, lastSave = 0, lastClock = 0;
   let vibrating = 0, light = 0, backlight = -1;
+  let firmware = null, state = null, open = true, off = false;
 
   // The phone keeps local time: seconds since 1970 as read on a wall clock here. Set again
   // every minute, as phone time stops while the page is hidden (a time set on the phone stays).
@@ -26,29 +29,51 @@ self.V600Runner = function (post, coreUrl) {
   }
 
   async function start(msg) {
+    firmware = msg.firmware;
+    state = msg.state && msg.state.byteLength ? msg.state : null;
+    open = msg.open !== false;
+    await boot();
+    post({ t: 'ready' });
+  }
+
+  // A fresh core (each power-on: a whole new instance, so the old one's memory goes).
+  async function boot() {
     if (!self.V600Core) importScripts(coreUrl);
     M = await self.V600Core({ locateFile: f => new URL(f, coreUrl).href });
-    const fw = new Uint8Array(msg.firmware), at = M._malloc(fw.length);
+    const fw = new Uint8Array(firmware), at = M._malloc(fw.length);
     M.HEAPU8.set(fw, at);
     let st = 0, n = 0;
-    if (msg.state && msg.state.byteLength) {
-      n = msg.state.byteLength;
+    if (state) {
+      n = state.byteLength;
       st = M._malloc(n);
-      M.HEAPU8.set(new Uint8Array(msg.state), st);
+      M.HEAPU8.set(new Uint8Array(state), st);
     }
     p = M._v600_create(at, fw.length, st, n);
     M._free(at);
     if (st) M._free(st);
     if (!p) return post({ t: 'error', text: 'this firmware file is not usable' });
     buf = M._malloc(LCD + OUTER + 2 * AUDIO + 64);
-    if (msg.open === false) M._v600_flip(p, 0);
+    if (!open) M._v600_flip(p, 0);
+    lcdSerial = outerSerial = backlight = -1;
+    vibrating = light = 0;
+    off = false;
     setClock();
     changes = M._v600_state_changes(p);
     t0 = performance.now();
     phone0 = M._v600_seconds(p);
     lastSave = t0;
-    post({ t: 'ready' });
     setTimeout(step, 0);
+  }
+
+  // The firmware cut its power: store what it wrote on the way down, go dark, stop.
+  function powerOff() {
+    save(true);
+    post({ t: 'vibrate', on: false });
+    post({ t: 'light', rgb: 0 });
+    post({ t: 'power', on: false });
+    off = true;
+    p = 0;
+    M = null;
   }
 
   // Keep phone time level with the clock: run what is due, at most 0.1 s at a time; if the
@@ -62,6 +87,7 @@ self.V600Runner = function (post, coreUrl) {
         stopped = 'the CPU stopped on an error';
       }
       publish();
+      if (M._v600_powered_off(p)) return powerOff();
       if (now - lastSave > SAVE_MS) save();
       if (now - lastClock > CLOCK_MS) setClock();
     }
@@ -114,12 +140,19 @@ self.V600Runner = function (post, coreUrl) {
     M._v600_save_state(p, at);
     const bytes = M.HEAPU8.slice(at, at + n).buffer;
     M._free(at);
+    state = bytes.slice(0);                              // for the next power-on
     post({ t: 'state', bytes }, [bytes]);
   }
 
   return function (msg) {
     try {
       if (msg.t === 'start') return start(msg).catch(e => post({ t: 'error', text: String(e) }));
+      if (msg.t === 'flip') open = !!msg.open;
+      if (off && msg.t === 'key' && msg.key === -1 && msg.down) {          // red: switch on
+        off = false;
+        return boot().then(() => post({ t: 'power', on: true }))
+                     .catch(e => post({ t: 'error', text: String(e) }));
+      }
       if (!p) return;
       if (msg.t === 'key') M._v600_key(p, msg.key, msg.down ? 1 : 0);
       else if (msg.t === 'flip') M._v600_flip(p, msg.open ? 1 : 0);

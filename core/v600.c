@@ -81,6 +81,7 @@ void v600_destroy(v600_t *p) {
 int v600_run(v600_t *p, uint32_t microseconds) {
     if (p->failed) return 1;
     machine_t *m = p->m;
+    if (m->powered_off) return 0;
     p->deadline = m->insns + (uint64_t)microseconds * (CPU_IPS / 1000000);
     while (m->insns < p->deadline) {
         release_due(p);
@@ -90,6 +91,7 @@ int v600_run(v600_t *p, uint32_t microseconds) {
             p->failed = 1;
             return 1;
         }
+        if (m->powered_off) return 0;
     }
     return 0;
 }
@@ -208,5 +210,6 @@ size_t v600_save_state(v600_t *p, uint8_t *out) {
 int v600_vibrator(v600_t *p) { return pmic_vibrator(p->m->pmic); }
 uint32_t v600_lights(v600_t *p) { return qspi_lights(p->m->qspi); }
 int v600_backlight(v600_t *p) { return pmic_backlight(p->m->pmic); }
+int v600_powered_off(v600_t *p) { return p->m->powered_off; }
 
 void v600_set_log(v600_t *p, void (*fn)(int kind, const char *text)) { machine_set_log(p->m, fn); }

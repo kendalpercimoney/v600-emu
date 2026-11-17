@@ -133,6 +133,7 @@ struct machine {
     trace_t trace[TRACE_LEN];
     /* running */
     uint32_t start;                 /* where the next run() continues (bit 0 = Thumb) */
+    int powered_off;                /* the firmware cut the power (watchdog pin) */
     char stopped[64];               /* set by machine_stop (a hook): run() returns RUN_HOOK */
     int idle_hint, fault, fault_access, fault_size;
     uint32_t fault_addr, fault_value, fault_pc;
@@ -225,6 +226,7 @@ uint64_t    ostimer_next_event(ostimer_t *);      /* UINT64_MAX: none */
 double      ostimer_next(void *);                 /* the same as a double, or -1 */
 counter_t  *counter_new(machine_t *);
 regs_t     *regs_new(machine_t *, uint32_t size, uint32_t clear_word, uint32_t clear_mask);
+device_t   *wdog_new(machine_t *);
 keypad_t   *keypad_new(machine_t *);
 void        keypad_press(keypad_t *, int key, int down);
 edgeport_t *edgeport_new(machine_t *);

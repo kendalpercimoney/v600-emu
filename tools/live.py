@@ -103,6 +103,7 @@ class Phone:
         board.set_clock(m)                  # the computer's time
         self.flip_open = True
         self.stopped = None
+        self.off = False                    # switched itself off (red held)
         self.saved_writes = 0
         self.last_save = time.monotonic()
         self.wall0, self.virt0 = time.monotonic(), 0
@@ -110,6 +111,8 @@ class Phone:
 
     def frame(self):
         """PNG of the main display, re-encoded only when the ATI drew something."""
+        if self.off:
+            return png(Image.new('RGB', (352, 440)))
         ati = self.m.ati
         fid = (id(ati), ati.draws, ati.reg(0x418))
         if fid != self.frame_id:
@@ -118,6 +121,8 @@ class Phone:
 
     def outer(self):
         """PNG of the outer (closed-flip) display, 96 x 32 pixels shown 3x."""
+        if self.off:
+            return png(Image.new('RGB', (288, 96)))
         disp = self.m.ati.outer
         fid = (id(disp), disp.updates)
         if fid != self.outer_id:
@@ -133,7 +138,7 @@ class Phone:
                 self.releases.remove((due, key))
                 board.press(m, key, False)
             ahead = (m.insns - self.virt0) / CPU_IPS - (time.monotonic() - self.wall0)
-            if ahead > 0 or self.stopped:
+            if ahead > 0 or self.stopped or self.off:
                 time.sleep(min(max(ahead, 0), 0.02) or 0.02)
                 continue
             with self.lock:
@@ -141,13 +146,24 @@ class Phone:
             if r == 'error':
                 self.stopped = 'CPU error (Restart to boot again)'
                 print('emulator stopped: CPU error', flush=True)
+            elif r == 'hook' and m.stopped == 'power off':
+                self.save(force=True)
+                self.off = True
+                print('the phone switched itself off (hold End to switch it on)', flush=True)
             if ahead < -2.0:                    # can't keep up: let the clock slip
                 self.wall0 += -ahead - 2.0
             if time.monotonic() - self.last_save > 5:
                 self.save()
 
     def handle(self, what, *args):
-        if what == 'key':
+        if what == 'key' and self.off:      # off: only End (held) switches it on
+            if args == ('red', True):
+                flip = self.flip_open
+                self.boot()
+                if not flip:
+                    self.flip_open = False
+                    board.set_flip(self.m, False)
+        elif what == 'key':
             # A tap's down and up can arrive together, faster than the firmware scans the
             # keypad: keep each key down for at least MIN_HOLD of phone time.
             key, down = args
@@ -212,6 +228,7 @@ class Phone:
         vibrate, light, backlight = board.outputs(self.m)
         return {'seconds': round(self.m.insns / CPU_IPS, 1), 'lag': round(lag, 2),
                 'log': self.messages[-6:], 'flip_open': self.flip_open, 'stopped': self.stopped,
+                'power': not self.off,
                 'vibrate': vibrate, 'light': f'#{light:06x}' if light else None, 'backlight': backlight}
 
 

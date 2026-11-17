@@ -172,6 +172,8 @@ void fwlog_install(machine_t *m) { machine_hook(m, VSPRINTF, vsprintf_hook, 0, 0
          is how we learn the services' port.
      0x14C41 from MM (handler 0x100C21EA): registration result, +2 status (4: home; 2, 3:
          roaming triangle), +3..+5 network (BCD as in GSM 04.08), +7..+8 location area.
+   Switching off: the registration service sends MNMM 0x14C00 and waits for 0x14C20 before
+     it confirms its stop; without it the phone never finishes powering down.
    Calls (GSM 04.08 call control, carried over an MM connection, group MMCM):
      0x15001 connection request [protocol (3 = CC), transaction, ...] -> 0x15020 [protocol,
          transaction, 0] (built by MM at 0x1094F808) to the port MM looks up with
@@ -200,6 +202,8 @@ void fwlog_install(machine_t *m) { machine_hook(m, VSPRINTF, vsprintf_hook, 0, 0
 #define SEND_REG_REQ 0x100C177Au
 #define MNMM_STATUS 0x14C40u
 #define MNMM_REG_CNF 0x14C41u
+#define MNMM_DETACH_REQ 0x14C00u          /* switching off */
+#define MNMM_DETACH_CNF 0x14C20u
 #define REGISTERED 4
 #define SIGNAL_IND 0x11810u
 #define SIGNAL_PORT 0x121B7020u
@@ -360,6 +364,9 @@ static void sent(machine_t *m, void *ctx) {
     if (ident == MNMM_STATUS && !n->have_port) {
         n->port = r(m, 1);
         n->have_port = 1;
+    } else if (ident == MNMM_DETACH_REQ && n->have_port) {   /* power-down waits for it */
+        const uint8_t none[0x20] = {0};
+        post(n, MNMM_DETACH_CNF, none, sizeof none, n->port);
     } else if (ident == MMCM_EST_REQ) {
         arm_mem_read(m->cpu, message, h, 2);
         if (h[0] == CALL_CONTROL) after(n, 0.3, EV_CONNECT, 0, h[0], h[1], 0);

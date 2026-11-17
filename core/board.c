@@ -124,6 +124,7 @@ void v600_build(machine_t *m, int flip_open, int sim_card) {
     machine_plain(m, 0x2484502C, 4);           /* low-power mode: hit on every idle pass */
     /* Unidentified unit at 0x24845000: +0x18 data, +0x10 bit 8 = start / busy (self-clearing). */
     machine_attach(m, 0x24845000, 0x1000, &regs_new(m, 0x1000, 0x10, 0x100)->d);
+    machine_attach(m, 0x24849000, 4, wdog_new(m));     /* power-off: the watchdog pin */
     /* SIM card interface (SCIM) with a virtual SIM card in port 0 (sim.c). */
     m->sim = sim_new(m, sim_card, CPU_IPS);
     machine_attach(m, 0x2484F000, 0x100, (device_t *)m->sim);
